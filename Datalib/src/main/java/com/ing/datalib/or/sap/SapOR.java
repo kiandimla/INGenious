@@ -36,12 +36,22 @@ public class SapOR implements ORRootInf<SapORPage> {
 
     @JacksonXmlProperty(isAttribute = true)
     private String type;
+    
+    @JacksonXmlProperty(isAttribute = true)
+    private ORScope scope = ORScope.PROJECT;
+    
+    @JacksonXmlElementWrapper(localName = "projects")
+    @JacksonXmlProperty(localName = "project")
+    private List<String> projects = new ArrayList<>();
 
     @JsonIgnore
     private ObjectRepository objectRepository;
 
     @JsonIgnore
     private Boolean saved = true;
+    
+    @JsonIgnore
+    private String repLocationOverride;
 
     public SapOR() {
         this.pages = new ArrayList<>();
@@ -212,6 +222,9 @@ public class SapOR implements ORRootInf<SapORPage> {
     @JsonIgnore
     @Override
     public String getRepLocation() {
+        if (repLocationOverride != null && !repLocationOverride.isEmpty()) {
+            return repLocationOverride;
+        }
         return getObjectRepository().getSapORRepLocation();
     }
 
@@ -219,5 +232,41 @@ public class SapOR implements ORRootInf<SapORPage> {
     @Override
     public void sort() {
         ORUtils.sort(this);
+    }
+    
+    public enum ORScope { 
+        PROJECT, SHARED 
+    }
+
+    @JsonIgnore
+    public ORScope getScope() { 
+        return scope; 
+    }
+    
+    public void setScope(ORScope scope) { 
+        this.scope = scope; 
+    }
+
+    @JsonIgnore
+    public boolean isShared() { 
+        return scope == ORScope.SHARED; 
+    }
+    
+    public List<String> getProjects() {
+        return projects;
+    }
+    
+    public void setProjects(List<String> projects) {
+        this.projects = (projects == null) ? new ArrayList<>() : projects;
+    }
+    
+    @JsonIgnore
+    public String getRepLocationOverride() {
+        return repLocationOverride;
+    }
+    
+    @JsonIgnore
+    public void setRepLocationOverride(String override) {
+        this.repLocationOverride = override;
     }
 }

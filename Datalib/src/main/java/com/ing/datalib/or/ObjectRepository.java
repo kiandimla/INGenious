@@ -48,9 +48,12 @@ public class ObjectRepository {
     private WebOR webProjectOR;
     private MobileOR mobileProjectOR;
     private MobileOR mobileSharedOR;
+
     private StructuredData structuredDataProjectOR;
     private StructuredData structuredDataSharedOR;
-    private SapOR sapOR;
+
+    private SapOR sapProjectOR;
+    private SapOR sapSharedOR;
     
     private final Set<String> webSharedUsageProjects = new HashSet<>();
     private final Set<String> mobileSharedUsageProjects = new HashSet<>();
@@ -81,15 +84,22 @@ public class ObjectRepository {
         try {
             yamlReader = new YamlORReader(this);
             yamlWriter = new YamlORWriter();
-
-            boolean projectYamlExists = hasYamlOR();
-            boolean sharedYamlExists  = hasSharedYamlOR();
-            boolean xmlExists = hasAnyXmlOR();
-
-            if (xmlExists) {
-                loadXmlObjectRepositories();
-                convertXmlOrsToYamlAndArchive();
-                loadYamlObjectRepositories();
+            
+            File orRepLocation = new File(getORRepLocation());
+            
+            // Determine format once for PROJECT ORs only
+            // Check if YAML or XML files exist for project ORs
+            boolean hasYamlFiles = yamlReader.webORExists(orRepLocation) 
+                                || yamlReader.mobileORExists(orRepLocation)
+                                || yamlReader.structuredDataORExists(orRepLocation)
+                                || yamlReader.sapORExists(orRepLocation);
+            boolean hasXmlFiles = new File(getORLocation()).exists() 
+                               || new File(getMORLocation()).exists() 
+                               || new File(getStructuredDataORLocation()).exists()
+                               || new File(getSapORLocation()).exists();
+            
+            // Set format once for entire project
+            if (hasYamlFiles) {
                 useYamlFormat = true;
             }
             
@@ -98,9 +108,44 @@ public class ObjectRepository {
                 useYamlFormat = true;
             }
             
-            else {
-                webProjectOR = new WebOR();
-                webProjectOR.setScope(WebOR.ORScope.PROJECT);
+            // === SHARED ORs (always XML) ===
+            File sharedFile = new File(getSharedORLocation());
+            if (sharedFile.exists()) {
+                webSharedOR = XML_MAPPER.readValue(sharedFile, WebOR.class);
+                webSharedOR.setName("Shared Web Objects");
+            } else {
+                webSharedOR = new WebOR("Shared Web Objects");
+            }
+            
+            File sharedmorFile = new File(getSharedMORLocation());
+            if (sharedmorFile.exists()) {
+                mobileSharedOR = XML_MAPPER.readValue(sharedmorFile, MobileOR.class);
+                mobileSharedOR.setName("Shared Mobile Objects");
+            } else {
+                mobileSharedOR = new MobileOR("Shared Mobile Objects");
+            }
+            
+            File sharedSapFile = new File(getSharedSapORLocation());
+            if (sharedSapFile.exists()) {
+                sapSharedOR = XML_MAPPER.readValue(sharedSapFile, SapOR.class);
+                sapSharedOR.setName("Shared SAP Objects");
+            } else {
+                sapSharedOR = new SapOR("Shared SAP Objects");
+            }
+            
+            // === PROJECT ORs (YAML or XML based on detection) ===
+            // Load Web Project OR
+            if (useYamlFormat && yamlReader.webORExists(orRepLocation)) {
+                webProjectOR = yamlReader.readWebOR(orRepLocation);
+                webProjectOR.setName(sProject.getName());
+            } else if (!useYamlFormat && new File(getORLocation()).exists()) {
+                webProjectOR = XML_MAPPER.readValue(new File(getORLocation()), WebOR.class);
+                webProjectOR.setName(sProject.getName());
+            } else {
+                webProjectOR = new WebOR(sProject.getName());
+            }
+            // Set ObjectRepository reference immediately to prevent directory creation
+            if (webProjectOR != null) {
                 webProjectOR.setObjectRepository(this);
                 webProjectOR.setScope(ORScope.PROJECT);
             }
@@ -137,15 +182,18 @@ public class ObjectRepository {
                 structuredDataProjectOR.setObjectRepository(this);
             }
             
-            // Load SAP OR (always XML format)
-            if (new File(getSapORLocation()).exists()) {
-                sapOR = XML_MAPPER.readValue(new File(getSapORLocation()), SapOR.class);
-                sapOR.setName(sProject.getName());
+            // Load SAP Project OR (YAML or XML based on detection)
+            if (useYamlFormat && yamlReader.sapORExists(orRepLocation)) {
+                sapProjectOR = yamlReader.readSapOR(orRepLocation);
+                sapProjectOR.setName(sProject.getName());
+            } else if (!useYamlFormat && new File(getSapORLocation()).exists()) {
+                sapProjectOR = XML_MAPPER.readValue(new File(getSapORLocation()), SapOR.class);
+                sapProjectOR.setName(sProject.getName());
             } else {
-                sapOR = new SapOR(sProject.getName());
+                sapProjectOR = new SapOR(sProject.getName());
             }
-            if (sapOR != null) {
-                sapOR.setObjectRepository(this);
+            if (sapProjectOR != null) {
+                sapProjectOR.setObjectRepository(this);
             }
 
             // Set remaining properties for shared and project ORs
@@ -173,8 +221,15 @@ public class ObjectRepository {
                 structuredDataProjectOR.setObjectRepository(this);
                 structuredDataProjectOR.setSaved(true);
             }
-            if (sapOR != null) {
-                sapOR.setSaved(true);
+            if (sapSharedOR != null) {
+                sapSharedOR.setObjectRepository(this);
+                sapSharedOR.setSaved(true);
+                sapSharedOR.setRepLocationOverride(getSharedSapORRepLocation());
+                sapSharedOR.setScope(SapOR.ORScope.SHARED);
+            }
+            if (sapProjectOR != null) {
+                sapProjectOR.setSaved(true);
+                sapProjectOR.setScope(SapOR.ORScope.PROJECT);
             }
 
             LOG.log(Level.INFO, "Shared WebOR loaded: {0}", (webSharedOR != null));
@@ -236,8 +291,16 @@ public class ObjectRepository {
                     mobileSharedOR.setSaved(true);
                 }
             }
-        } catch (IOException e) {
-            LOG.log(Level.SEVERE, "Failed to initialize ObjectRepository", e);
+
+            webProjectOR.setObjectRepository(this);
+            webProjectOR.setSaved(true);
+            mobileProjectOR.setObjectRepository(this);
+            structuredDataProjectOR.setObjectRepository(this);
+        
+            LOG.log(Level.INFO, "Shared SapOR loaded: {0}", (sapSharedOR != null));
+            LOG.log(Level.INFO, "Project SapOR loaded: {0}", (sapProjectOR != null));
+        } catch (IOException ex) {
+            Logger.getLogger(ObjectRepository.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
 
@@ -256,6 +319,9 @@ public class ObjectRepository {
     public String getSapORLocation() {
         return sProject.getLocation() + File.separator + "SapOR.object";
     }
+    public String getSharedSapORLocation() {
+        return "Shared" + File.separator + "SharedSapObjects" + File.separator + "SharedSapOR.object";
+    }
     public String getSharedMORLocation() {
         return "Shared" + File.separator + "SharedMobileObjects" + File.separator + "SharedMOR.object";
     }
@@ -270,6 +336,9 @@ public class ObjectRepository {
     }
     public String getSapORRepLocation() {
         return sProject.getLocation() + File.separator + "SapObjectRepository";
+    }
+    public String getSharedSapORRepLocation() {
+        return "Shared" + File.separator + "SharedSapObjects" + File.separator + "SapObjectRepository";
     }
     public String getSharedMORRepLocation() {
         return "Shared" + File.separator + "SharedMobileObjects" + File.separator + "MobileObjectRepository";
@@ -295,8 +364,11 @@ public class ObjectRepository {
     public StructuredData getStructuredDataSharedOR() {
         return structuredDataSharedOR;
     }
+    public SapOR getSapSharedOR() {
+        return sapSharedOR;
+    }
     public SapOR getSapOR() {
-        return sapOR;
+        return sapProjectOR;
     }
 
     /**
@@ -338,7 +410,45 @@ public class ObjectRepository {
                     );
                 }
             }
-
+            
+            java.util.List<String> sapExisting = (sapSharedOR != null) ? sapSharedOR.getProjects() : java.util.List.of();
+            java.util.LinkedHashSet<String> sapMerged = new java.util.LinkedHashSet<>();
+            if (sapExisting != null) sapMerged.addAll(sapExisting);
+            sapMerged.addAll(sharedUsageProjects);
+            boolean sapProjectsChanged = false;
+            if (sapSharedOR != null) {
+                java.util.ArrayList<String> sapList = new java.util.ArrayList<>(sapMerged);
+                java.util.List<String> sapCurrent = sapSharedOR.getProjects();
+                sapProjectsChanged = (sapCurrent == null) || !new java.util.LinkedHashSet<>(sapCurrent).equals(sapMerged);
+                if (sapProjectsChanged) {
+                    sapSharedOR.setProjects(sapList);
+                }
+            }
+            
+            // === SHARED ORs (always XML) ===
+            if (webSharedOR != null && (!webSharedOR.isSaved() || projectsChanged)) {
+                File sharedORFile = new File(getSharedORLocation());
+                sharedORFile.getParentFile().mkdirs();
+                XML_MAPPER.writerWithDefaultPrettyPrinter()
+                    .writeValue(sharedORFile, webSharedOR);
+                webSharedOR.setSaved(true);
+            }
+            if (mobileSharedOR != null && (!mobileSharedOR.isSaved() || mProjectsChanged)) {
+                File sharedMORFile = new File(getSharedMORLocation());
+                sharedMORFile.getParentFile().mkdirs();
+                XML_MAPPER.writerWithDefaultPrettyPrinter()
+                        .writeValue(sharedMORFile, mobileSharedOR);
+                mobileSharedOR.setSaved(true);
+            }
+            if (sapSharedOR != null && (!sapSharedOR.isSaved() || sapProjectsChanged)) {
+                File sharedSapORFile = new File(getSharedSapORLocation());
+                sharedSapORFile.getParentFile().mkdirs();
+                XML_MAPPER.writerWithDefaultPrettyPrinter()
+                        .writeValue(sharedSapORFile, sapSharedOR);
+                sapSharedOR.setSaved(true);
+            }
+            
+            // === PROJECT ORs (YAML or XML based on format) ===
             if (useYamlFormat) {
                 File sharedRoot = new File(getSharedORRepLocation());
                 if (webSharedOR != null && (!webSharedOR.isSaved() || webProjectsChanged)) {
@@ -358,17 +468,43 @@ public class ObjectRepository {
                     }
                     mobileSharedOR.setSaved(true);
                 }
-                saveAsYaml();
+                if (sapProjectOR != null && !sapProjectOR.isSaved()) {
+                    File saporRepLocation = new File(getSapORRepLocation());
+                    yamlWriter.writeSapOR(sapProjectOR, saporRepLocation);
+                    sapProjectOR.setSaved(true);
+                }
                 LOG.info("Saved project ORs in YAML format");
-            }
-            
-            // === SAP OR (always XML format) ===
-            if (sapOR != null) {
-                File sapORFile = new File(getSapORLocation());
-                sapORFile.getParentFile().mkdirs();
-                XML_MAPPER.writerWithDefaultPrettyPrinter()
-                        .writeValue(sapORFile, sapOR);
-                sapOR.setSaved(true);
+            } else {
+                // Save in XML format (legacy)
+                if (webProjectOR != null && !webProjectOR.isSaved()) {
+                    File orFile = new File(getORLocation());
+                    orFile.getParentFile().mkdirs();
+                    XML_MAPPER.writerWithDefaultPrettyPrinter()
+                        .writeValue(orFile, webProjectOR);
+                    webProjectOR.setSaved(true);
+                }
+                if (mobileProjectOR != null && !mobileProjectOR.isSaved()) {
+                    File morFile = new File(getMORLocation());
+                    morFile.getParentFile().mkdirs();
+                    XML_MAPPER.writerWithDefaultPrettyPrinter()
+                            .writeValue(morFile, mobileProjectOR);
+                    mobileProjectOR.setSaved(true);
+                }
+                if (structuredDataProjectOR != null && !structuredDataProjectOR.isSaved()) {
+                    File structuredDataORFile = new File(getStructuredDataORLocation());
+                    structuredDataORFile.getParentFile().mkdirs();
+                    XML_MAPPER.writerWithDefaultPrettyPrinter()
+                            .writeValue(structuredDataORFile, structuredDataProjectOR);
+                    structuredDataProjectOR.setSaved(true);
+                }
+                if (sapProjectOR != null && !sapProjectOR.isSaved()) {
+                    File sapORFile = new File(getSapORLocation());
+                    sapORFile.getParentFile().mkdirs();
+                    XML_MAPPER.writerWithDefaultPrettyPrinter()
+                            .writeValue(sapORFile, sapProjectOR);
+                    sapProjectOR.setSaved(true);
+                }
+                LOG.info("Saved project ORs in XML format");
             }
         } catch (IOException ex) {
             Logger.getLogger(ObjectRepository.class.getName())

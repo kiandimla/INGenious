@@ -418,6 +418,9 @@ public class Project {
             getObjectRepository().getWebSharedOR().setName(newName);
             getObjectRepository().getMobileOR().setName(newName);
             getObjectRepository().getMobileSharedOR().setName(newName);
+            getObjectRepository().getAPIOR().setName(newName);
+            getObjectRepository().getSapOR().setName(newName);
+            getObjectRepository().getSapSharedOR().setName(newName);
             return true;
         }
         return false;
