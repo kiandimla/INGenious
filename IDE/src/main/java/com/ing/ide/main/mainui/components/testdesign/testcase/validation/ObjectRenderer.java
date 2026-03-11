@@ -5,6 +5,7 @@ import com.ing.datalib.or.ObjectRepository;
 import com.ing.datalib.or.web.ResolvedWebObject;
 import com.ing.datalib.or.structureddata.ResolvedStructuredDataObject;
 import com.ing.datalib.or.mobile.ResolvedMobileObject;
+import com.ing.datalib.or.sap.ResolvedSapObject;
 
 import com.ing.engine.support.ObjectTypeUtil;
 import java.awt.Color;
@@ -60,6 +61,7 @@ public class ObjectRenderer extends AbstractRenderer {
         String pageToken = step.getReference();
         String objectName = step.getObject();
         
+        // Check Web OR
         ResolvedWebObject.PageRef wref = ResolvedWebObject.PageRef.parse(pageToken);
         if ((wref != null && wref.name != null && wref.scope != null) && (repo.resolveWebObject(wref, objectName) != null)
                 || (repo.resolveWebObjectWithScope(pageToken, objectName) != null)) {
@@ -75,6 +77,18 @@ public class ObjectRenderer extends AbstractRenderer {
         ResolvedStructuredDataObject.PageRef aref = ResolvedStructuredDataObject.PageRef.parse(pageToken);
         return ((aref != null && aref.name != null && aref.scope != null) && (repo.resolveStructuredDataObject(aref, objectName) != null)
                 || (repo.resolveStructuredDataObjectWithScope(pageToken, objectName) != null ));
+        
+        // Check SAP OR
+        ResolvedSapObject.PageRef sref = ResolvedSapObject.PageRef.parse(pageToken);
+        if (sref != null && sref.name != null && sref.scope != null) {
+            if (repo.resolveSapObject(sref, objectName) != null) {
+                return true;
+            }
+        } else if (repo.resolveSapObjectWithScope(pageToken, objectName) != null) {
+            return true;
+        }
+        
+        return false;
     }
 
     /**

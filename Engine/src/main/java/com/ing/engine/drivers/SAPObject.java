@@ -7,6 +7,7 @@ import com.jacob.com.Dispatch;
 import com.ing.datalib.or.ObjectRepository;
 import com.ing.datalib.or.common.ObjectGroup;
 import com.ing.datalib.or.sap.SapORObject;
+import com.ing.datalib.or.sap.ResolvedSapObject;
 import com.ing.engine.core.Control;
 import com.ing.engine.core.CommandControl;
 import java.util.HashMap;
@@ -92,16 +93,38 @@ public class SAPObject {
 	
 	public SapORObject getSapObject(String page, String object) {
 		ObjectRepository objRep = Control.getCurrentProject().getObjectRepository();
-		if (objRep.getSapOR().getPageByName(page) != null) {
+		
+		try {
+			ResolvedSapObject.PageRef ref = ResolvedSapObject.PageRef.parse(page);
+			ResolvedSapObject resolved = objRep.resolveSapObject(ref, object);
+			if (resolved != null && resolved.getGroup() != null) {
+				return (SapORObject) resolved.getGroup().getObjects().get(0);
+			}
+		} catch (Exception ignore) { }
+		
+		if (objRep.getSapOR() != null && objRep.getSapOR().getPageByName(page) != null) {
 			return objRep.getSapOR().getPageByName(page).getObjectGroupByName(object).getObjects().get(0);
+		} else if (objRep.getSapSharedOR() != null && objRep.getSapSharedOR().getPageByName(page) != null) {
+			return objRep.getSapSharedOR().getPageByName(page).getObjectGroupByName(object).getObjects().get(0);
 		}
 		return null;
 	}
 
 	public ObjectGroup<SapORObject> getSapObjects(String page, String object) {
 		ObjectRepository objRep = Control.getCurrentProject().getObjectRepository();
-		if (objRep.getSapOR().getPageByName(page) != null) {
+		
+		try {
+			ResolvedSapObject.PageRef ref = ResolvedSapObject.PageRef.parse(page);
+			ResolvedSapObject resolved = objRep.resolveSapObject(ref, object);
+			if (resolved != null && resolved.getGroup() != null) {
+				return (ObjectGroup<SapORObject>) resolved.getGroup();
+			}
+		} catch (Exception ignore) { }
+		
+		if (objRep.getSapOR() != null && objRep.getSapOR().getPageByName(page) != null) {
 			return objRep.getSapOR().getPageByName(page).getObjectGroupByName(object);
+		} else if (objRep.getSapSharedOR() != null && objRep.getSapSharedOR().getPageByName(page) != null) {
+			return objRep.getSapSharedOR().getPageByName(page).getObjectGroupByName(object);
 		}
 		return null;
 	}

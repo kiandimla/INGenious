@@ -1,22 +1,23 @@
 
 package com.ing.datalib.or.sap;
 
-import com.ing.datalib.or.sap.*;
-import com.ing.datalib.or.ObjectRepository;
-import com.ing.datalib.or.common.ORRootInf;
-import com.ing.datalib.or.common.ORUtils;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
+
 import javax.swing.tree.TreeNode;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
+import com.ing.datalib.or.ObjectRepository;
+import com.ing.datalib.or.common.ORRootInf;
+import com.ing.datalib.or.common.ORUtils;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JacksonXmlRootElement(localName = "Root")
@@ -220,12 +221,16 @@ public class SapOR implements ORRootInf<SapORPage> {
     }
 
     @JsonIgnore
+    public void setRepLocationOverride(String path) {
+        this.repLocationOverride = path;
+    }
+
+    @JsonIgnore
     @Override
     public String getRepLocation() {
-        if (repLocationOverride != null && !repLocationOverride.isEmpty()) {
-            return repLocationOverride;
-        }
-        return getObjectRepository().getSapORRepLocation();
+        return repLocationOverride != null
+                ? repLocationOverride
+                : getObjectRepository().getSapORRepLocation();
     }
 
     @JsonIgnore
@@ -258,15 +263,5 @@ public class SapOR implements ORRootInf<SapORPage> {
     
     public void setProjects(List<String> projects) {
         this.projects = (projects == null) ? new ArrayList<>() : projects;
-    }
-    
-    @JsonIgnore
-    public String getRepLocationOverride() {
-        return repLocationOverride;
-    }
-    
-    @JsonIgnore
-    public void setRepLocationOverride(String override) {
-        this.repLocationOverride = override;
     }
 }

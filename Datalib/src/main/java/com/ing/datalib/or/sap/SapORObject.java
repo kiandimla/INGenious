@@ -1,16 +1,6 @@
 
 package com.ing.datalib.or.sap;
 
-import com.ing.datalib.or.sap.*;
-import com.ing.datalib.component.utils.FileUtils;
-import com.ing.datalib.or.common.ORAttribute;
-import com.ing.datalib.or.common.ORObjectInf;
-import com.ing.datalib.or.common.ORUtils;
-import com.ing.datalib.or.common.ObjectGroup;
-import com.ing.datalib.undoredo.UndoRedoModel;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
-import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,10 +8,21 @@ import java.util.Enumeration;
 import java.util.EventListener;
 import java.util.List;
 import java.util.Objects;
+
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
+import com.ing.datalib.component.utils.FileUtils;
+import com.ing.datalib.or.common.ORAttribute;
+import com.ing.datalib.or.common.ORObjectInf;
+import com.ing.datalib.or.common.ORUtils;
+import com.ing.datalib.or.common.ObjectGroup;
+import com.ing.datalib.undoredo.UndoRedoModel;
 
 public class SapORObject extends UndoRedoModel implements ORObjectInf {
 
