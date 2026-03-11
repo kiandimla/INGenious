@@ -11,15 +11,18 @@ import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import com.ing.datalib.component.Project;
-import com.ing.datalib.component.TestStep;
 import com.ing.datalib.or.common.ORPageInf;
 import com.ing.datalib.or.common.ObjectGroup;
 import com.ing.datalib.or.mobile.MobileOR;
 import com.ing.datalib.or.mobile.MobileORObject;
 import com.ing.datalib.or.mobile.MobileORPage;
 import com.ing.datalib.or.mobile.ResolvedMobileObject;
+import com.ing.datalib.or.sap.SapOR;
 import com.ing.datalib.or.structureddata.ResolvedStructuredDataObject;
 import com.ing.datalib.or.structureddata.StructuredData;
 import com.ing.datalib.or.structureddata.StructuredDataORObject;
@@ -27,8 +30,6 @@ import com.ing.datalib.or.structureddata.StructuredDataORPage;
 import com.ing.datalib.or.web.ResolvedWebObject;
 import com.ing.datalib.or.web.WebOR;
 import com.ing.datalib.or.web.WebOR.ORScope;
-import static com.ing.datalib.or.web.WebOR.ORScope.PROJECT;
-import static com.ing.datalib.or.web.WebOR.ORScope.SHARED;
 import com.ing.datalib.or.web.WebORObject;
 import com.ing.datalib.or.web.WebORPage;
 import com.ing.datalib.or.yaml.YamlORReader;
@@ -49,6 +50,7 @@ public class ObjectRepository {
     private MobileOR mobileSharedOR;
     private StructuredData structuredDataProjectOR;
     private StructuredData structuredDataSharedOR;
+    private SapOR sapOR;
     
     private final Set<String> webSharedUsageProjects = new HashSet<>();
     private final Set<String> mobileSharedUsageProjects = new HashSet<>();
@@ -100,7 +102,67 @@ public class ObjectRepository {
                 webProjectOR = new WebOR();
                 webProjectOR.setScope(WebOR.ORScope.PROJECT);
                 webProjectOR.setObjectRepository(this);
-                webProjectOR.setName(sProject.getName());
+                webProjectOR.setScope(ORScope.PROJECT);
+            }
+            
+            // Load Mobile Project OR
+            if (useYamlFormat && yamlReader.mobileORExists(orRepLocation)) {
+                mobileProjectOR = yamlReader.readMobileOR(orRepLocation);
+                mobileProjectOR.setName(sProject.getName());
+            } else if (!useYamlFormat && new File(getMORLocation()).exists()) {
+                mobileProjectOR = XML_MAPPER.readValue(new File(getMORLocation()), MobileOR.class);
+                mobileProjectOR.setName(sProject.getName());
+            } else {
+                mobileProjectOR = new MobileOR(sProject.getName());
+            }
+            // Set ObjectRepository reference immediately
+            if (mobileProjectOR != null) {
+                mobileProjectOR.setObjectRepository(this);
+                mobileProjectOR.setScope(MobileOR.ORScope.PROJECT);
+            }
+            
+            // Load Structured Data Project OR
+            if (useYamlFormat && yamlReader.structuredDataORExists(orRepLocation)) {
+                structuredDataProjectOR = yamlReader.readStructuredDataOR(orRepLocation);
+                structuredDataProjectOR.setName(sProject.getName());
+            } else if (!useYamlFormat && new File(getStructuredDataORLocation()).exists()) {
+                structuredDataProjectOR = XML_MAPPER.readValue(new File(getStructuredDataORLocation()), StructuredData.class);
+                structuredDataProjectOR.setName(sProject.getName());
+            } else {
+                structuredDataProjectOR = new StructuredData(sProject.getName());
+            }
+
+            // Set ObjectRepository reference immediately
+            if (structuredDataProjectOR != null) {
+                structuredDataProjectOR.setObjectRepository(this);
+            }
+            
+            // Load SAP OR (always XML format)
+            if (new File(getSapORLocation()).exists()) {
+                sapOR = XML_MAPPER.readValue(new File(getSapORLocation()), SapOR.class);
+                sapOR.setName(sProject.getName());
+            } else {
+                sapOR = new SapOR(sProject.getName());
+            }
+            if (sapOR != null) {
+                sapOR.setObjectRepository(this);
+            }
+
+            // Set remaining properties for shared and project ORs
+            if (webSharedOR != null) {
+                webSharedOR.setObjectRepository(this);
+                webSharedOR.setSaved(true);
+                webSharedOR.setRepLocationOverride(getSharedORRepLocation());
+                webSharedOR.setScope(ORScope.SHARED);
+            }
+            if (webProjectOR != null) {
+                webProjectOR.setSaved(true);
+            }
+            if (mobileSharedOR != null) {
+                mobileSharedOR.setObjectRepository(this);
+                mobileSharedOR.setSaved(true);
+                mobileSharedOR.setRepLocationOverride(getSharedMORRepLocation());
+                mobileSharedOR.setScope(MobileOR.ORScope.SHARED);
                 
                 mobileProjectOR = new MobileOR();
                 mobileProjectOR.setScope(MobileOR.ORScope.PROJECT);
@@ -109,6 +171,55 @@ public class ObjectRepository {
                 
                 structuredDataProjectOR = new StructuredData();
                 structuredDataProjectOR.setObjectRepository(this);
+                structuredDataProjectOR.setSaved(true);
+            }
+            if (sapOR != null) {
+                sapOR.setSaved(true);
+            }
+
+            LOG.log(Level.INFO, "Shared WebOR loaded: {0}", (webSharedOR != null));
+            LOG.log(Level.INFO, "Project WebOR loaded: {0}", (webProjectOR != null));
+            LOG.log(Level.INFO, "Shared MobileOR loaded: {0}", (mobileSharedOR != null));
+            LOG.log(Level.INFO, "Project MobileOR loaded: {0}", (mobileProjectOR != null));
+            
+            // Try YAML format first (modern format)
+            if (yamlReader.webORExists(orRepLocation)) {
+                LOG.info("Loading Web OR from YAML format");
+                webProjectOR = yamlReader.readWebOR(orRepLocation);
+                webProjectOR.setName(sProject.getName());
+                useYamlFormat = true;
+            } else if (new File(getORLocation()).exists()) {
+                // Fall back to XML format (legacy)
+                LOG.info("Loading Web OR from XML format");
+                webProjectOR = XML_MAPPER.readValue(new File(getORLocation()), WebOR.class);
+                webProjectOR.setName(sProject.getName());
+                useYamlFormat = false; // Use XML format for legacy projects
+            } else {
+                webProjectOR = new WebOR(sProject.getName());
+                // useYamlFormat stays true for new projects
+            }
+            
+            // Try YAML format first for Mobile OR
+            if (yamlReader.mobileORExists(orRepLocation)) {
+                LOG.info("Loading Mobile OR from YAML format");
+                mobileProjectOR = yamlReader.readMobileOR(orRepLocation);
+                mobileProjectOR.setName(sProject.getName());
+                useYamlFormat = true;
+            } else if (new File(getMORLocation()).exists()) {
+                // Fall back to XML format (legacy)
+                LOG.info("Loading Mobile OR from XML format");
+                mobileProjectOR = XML_MAPPER.readValue(new File(getMORLocation()), MobileOR.class);
+                mobileProjectOR.setName(sProject.getName());
+                useYamlFormat = false; // Use XML format for legacy projects
+            } else {
+                mobileProjectOR = new MobileOR(sProject.getName());
+                // useYamlFormat stays true for new projects
+            }
+
+            // Try YAML format first for Structured Data OR
+            if (yamlReader.structuredDataORExists(orRepLocation)) {
+                LOG.info("Loading Structured Data OR from YAML format");
+                structuredDataProjectOR = yamlReader.readStructuredDataOR(orRepLocation);
                 structuredDataProjectOR.setName(sProject.getName());
                 useYamlFormat = true;
                 
@@ -142,8 +253,8 @@ public class ObjectRepository {
     public String getStructuredDataORLocation() {
         return sProject.getLocation() + File.separator + "StructuredDataOR.object";
     }
-    public String getSharedORLocation() {
-        return "Shared" + File.separator + "SharedWebObjects" + File.separator + "SharedOR.object";
+    public String getSapORLocation() {
+        return sProject.getLocation() + File.separator + "SapOR.object";
     }
     public String getSharedMORLocation() {
         return "Shared" + File.separator + "SharedMobileObjects" + File.separator + "SharedMOR.object";
@@ -157,18 +268,11 @@ public class ObjectRepository {
     public String getStructuredDataORRepLocation() {
         return sProject.getLocation() + File.separator + "StructuredDataObjectRepository";
     }
-    public String getSharedORRepLocation() {
-        // Use the application root (where Run.command/Run.bat is located) for Shared OR
-        // This ensures Shared OR is always at <AppRoot>/Shared/SharedObjectRepository
-        // regardless of where individual projects are located
-        try {
-            String appRoot = new File(System.getProperty("user.dir")).getCanonicalPath();
-            return appRoot + File.separator + "Shared" + File.separator + "SharedObjectRepository";
-        } catch (IOException ex) {
-            LOG.log(Level.WARNING, "Failed to get canonical path for Shared OR location", ex);
-            // Fallback to non-canonical path
-            return System.getProperty("user.dir") + File.separator + "Shared" + File.separator + "SharedObjectRepository";
-        }
+    public String getSapORRepLocation() {
+        return sProject.getLocation() + File.separator + "SapObjectRepository";
+    }
+    public String getSharedMORRepLocation() {
+        return "Shared" + File.separator + "SharedMobileObjects" + File.separator + "MobileObjectRepository";
     }
     public Project getsProject() {
         return sProject;
@@ -190,6 +294,9 @@ public class ObjectRepository {
     }
     public StructuredData getStructuredDataSharedOR() {
         return structuredDataSharedOR;
+    }
+    public SapOR getSapOR() {
+        return sapOR;
     }
 
     /**
@@ -253,6 +360,15 @@ public class ObjectRepository {
                 }
                 saveAsYaml();
                 LOG.info("Saved project ORs in YAML format");
+            }
+            
+            // === SAP OR (always XML format) ===
+            if (sapOR != null) {
+                File sapORFile = new File(getSapORLocation());
+                sapORFile.getParentFile().mkdirs();
+                XML_MAPPER.writerWithDefaultPrettyPrinter()
+                        .writeValue(sapORFile, sapOR);
+                sapOR.setSaved(true);
             }
         } catch (IOException ex) {
             Logger.getLogger(ObjectRepository.class.getName())
