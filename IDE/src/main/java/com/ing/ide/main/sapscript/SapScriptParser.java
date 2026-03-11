@@ -86,6 +86,22 @@ public class SapScriptParser {
     private static final Pattern SET_CURRENT_CELL_PATTERN = Pattern.compile(
             "session\\.findById\\(\"([^\"]+)\"\\)\\.currentCellRow\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
 
+    // Additional patterns for complete SAPActions coverage
+    private static final Pattern DROPDOWN_KEY_PATTERN = Pattern.compile(
+            "session\\.findById\\(\"([^\"]+)\"\\)\\.(?:Key|key)\\s*=\\s*\"([^\"]*)\"?", Pattern.CASE_INSENSITIVE);
+    
+    private static final Pattern DROPDOWN_SELECT_PATTERN = Pattern.compile(
+            "session\\.findById\\(\"([^\"]+)\"\\)\\.Select\\s*\\(?\\s*(\\d+)\\s*\\)?", Pattern.CASE_INSENSITIVE);
+    
+    private static final Pattern DOUBLE_CLICK_CURRENT_CELL_PATTERN = Pattern.compile(
+            "session\\.findById\\(\"([^\"]+)\"\\)\\.doubleClickCurrentCell", Pattern.CASE_INSENSITIVE);
+    
+    private static final Pattern TAB_SELECT_PATTERN = Pattern.compile(
+            "session\\.findById\\(\"([^\"]+)\"\\)\\.select\\(\\)", Pattern.CASE_INSENSITIVE);
+    
+    private static final Pattern COMBO_SELECTED_TEXT_PATTERN = Pattern.compile(
+            "session\\.findById\\(\"([^\"]+)\"\\)\\.selected\\s*=\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
+
     public SapScriptParser(AppMainFrame sMainFrame) {
         this.sMainFrame = sMainFrame;
     }
@@ -175,7 +191,8 @@ public class SapScriptParser {
         if (setTextMatcher.find()) {
             String id = setTextMatcher.group(1);
             String value = setTextMatcher.group(2);
-            addSapObject(id, "TextField", transaction);
+            String objType = determineObjectType(id);
+            addSapObject(id, objType, transaction);
             sapActions.add(new SapAction("Set", id, value, lineNumber));
             return;
         }
@@ -189,13 +206,69 @@ public class SapScriptParser {
             return;
         }
         
-        // Try to match select action
+        // Try to match dropdown key selection (must be before general select pattern)
+        Matcher dropdownKeyMatcher = DROPDOWN_KEY_PATTERN.matcher(line);
+        if (dropdownKeyMatcher.find()) {
+            String id = dropdownKeyMatcher.group(1);
+            String key = dropdownKeyMatcher.group(2);
+            addSapObject(id, "ComboBox", transaction);
+            sapActions.add(new SapAction("SelectDropDownByKey", id, key, lineNumber));
+            return;
+        }
+        
+        // Try to match dropdown select by index
+        Matcher dropdownSelectMatcher = DROPDOWN_SELECT_PATTERN.matcher(line);
+        if (dropdownSelectMatcher.find()) {
+            String id = dropdownSelectMatcher.group(1);
+            String index = dropdownSelectMatcher.group(2);
+            addSapObject(id, "ComboBox", transaction);
+            sapActions.add(new SapAction("SelectDropDownByIndex", id, index, lineNumber));
+            return;
+        }
+        
+        // Try to match combo selected with text value (e.g., cmb*.selected = "A")
+        Matcher comboTextMatcher = COMBO_SELECTED_TEXT_PATTERN.matcher(line);
+        if (comboTextMatcher.find()) {
+            String id = comboTextMatcher.group(1);
+            String value = comboTextMatcher.group(2);
+            String objType = determineObjectType(id);
+            if (objType.equals("ComboBox")) {
+                addSapObject(id, "ComboBox", transaction);
+                sapActions.add(new SapAction("SelectDropDownByText", id, value, lineNumber));
+                return;
+            }
+        }
+        
+        // Try to match select action (checkbox, radio, tab) - now with type detection
         Matcher selectMatcher = SELECT_PATTERN.matcher(line);
         if (selectMatcher.find()) {
             String id = selectMatcher.group(1);
             String selected = selectMatcher.group(2);
-            addSapObject(id, "Checkbox", transaction);
-            sapActions.add(new SapAction("Select", id, selected, lineNumber));
+            String objType = determineObjectType(id);
+            
+            // Determine action based on object type
+            if (objType.equals("Checkbox")) {
+                addSapObject(id, "Checkbox", transaction);
+                sapActions.add(new SapAction("SelectCheckBox", id, selected, lineNumber));
+            } else if (objType.equals("RadioButton")) {
+                addSapObject(id, "RadioButton", transaction);
+                sapActions.add(new SapAction("SelectRadioButton", id, selected, lineNumber));
+            } else if (objType.equals("Tab")) {
+                addSapObject(id, "Tab", transaction);
+                sapActions.add(new SapAction("SelectTab", id, selected, lineNumber));
+            } else {
+                addSapObject(id, objType, transaction);
+                sapActions.add(new SapAction("Select", id, selected, lineNumber));
+            }
+            return;
+        }
+        
+        // Try to match tab select() method call
+        Matcher tabSelectMatcher = TAB_SELECT_PATTERN.matcher(line);
+        if (tabSelectMatcher.find()) {
+            String id = tabSelectMatcher.group(1);
+            addSapObject(id, "Tab", transaction);
+            sapActions.add(new SapAction("SelectTab", id, "", lineNumber));
             return;
         }
         
@@ -218,7 +291,16 @@ public class SapScriptParser {
             return;
         }
         
-        // Try to match doubleClick action
+        // Try to match double click on current cell (specific pattern)
+        Matcher doubleClickCellMatcher = DOUBLE_CLICK_CURRENT_CELL_PATTERN.matcher(line);
+        if (doubleClickCellMatcher.find()) {
+            String id = doubleClickCellMatcher.group(1);
+            addSapObject(id, "Table", transaction);
+            sapActions.add(new SapAction("DoubleClickCell", id, "", lineNumber));
+            return;
+        }
+        
+        // Try to match general doubleClick action
         Matcher doubleClickMatcher = DOUBLE_CLICK_PATTERN.matcher(line);
         if (doubleClickMatcher.find()) {
             String id = doubleClickMatcher.group(1);
@@ -262,6 +344,53 @@ public class SapScriptParser {
             sapObjects.put(id, new SapObject(id, type, transaction));
             LOGGER.fine(String.format("Added SAP object: id=%s, type=%s", id, type));
         }
+    }
+    
+    /**
+     * Determine object type based on SAP ID prefix for better action mapping.
+     * Maps SAP control prefixes to appropriate object types that align with SAPActions.
+     */
+    private String determineObjectType(String sapId) {
+        // Extract the last segment after the final '/'
+        String lastSegment = sapId;
+        int lastSlash = sapId.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            lastSegment = sapId.substring(lastSlash + 1);
+        }
+        
+        // Determine type based on common SAP GUI control prefixes
+        if (lastSegment.startsWith("txt") || lastSegment.startsWith("ctxt")) {
+            return "TextField";
+        }
+        if (lastSegment.startsWith("pwd")) {
+            return "PasswordField";
+        }
+        if (lastSegment.startsWith("btn")) {
+            return "Button";
+        }
+        if (lastSegment.startsWith("chk")) {
+            return "Checkbox";
+        }
+        if (lastSegment.startsWith("rad")) {
+            return "RadioButton";
+        }
+        if (lastSegment.startsWith("cmb") || lastSegment.startsWith("cbo")) {
+            return "ComboBox";
+        }
+        if (lastSegment.startsWith("tbl")) {
+            return "Table";
+        }
+        if (lastSegment.startsWith("tab")) {
+            return "Tab";
+        }
+        if (lastSegment.startsWith("wnd")) {
+            return "Window";
+        }
+        if (lastSegment.startsWith("usr") || lastSegment.startsWith("sub")) {
+            return "Container"; // Container elements, usually skip
+        }
+        
+        return "Element"; // Default for unknown types
     }
 
     private void generateObjectRepository() throws Exception {
@@ -400,22 +529,38 @@ public class SapScriptParser {
     private String mapToINGeniousAction(String sapActionType) {
         switch (sapActionType.toLowerCase()) {
             case "set":
-                return "Set";
+                return "sapFill";
             case "click":
             case "press":
-                return "Click";
+                return "sapClick";
             case "select":
-                return "Select";
+                return "sapSelect";
+            case "selectcheckbox":
+                return "sapSelectCheckBox";
+            case "selectradiobutton":
+                return "sapSelectRadioButtonInRow";
+            case "selecttab":
+                return "sapSelect";
+            case "selectdropdownbytext":
+                return "sapSelectDropDownByText";
+            case "selectdropdownbykey":
+                return "sapSelectDropDownByKey";
+            case "selectdropdownbyindex":
+                return "sapSelectDropDownByIndex";
             case "setfocus":
-                return "SetFocus";
+                return "sapSetFocus";
             case "sendvkey":
-                return "SendVKey";
+                return "sapSimulateKeyPress";
             case "doubleclick":
-                return "DoubleClick";
+                return "sapDoubleClick";
+            case "doubleclickcell":
+                return "sapDoubleClickCell";
             case "modifycell":
-                return "ModifyCell";
+                return "sapModifyCell";
             case "setcurrentcell":
-                return "SetCurrentCell";
+                return "sapSetCurrentCellRow";
+            case "transaction":
+                return "sapExecuteTransaction";
             default:
                 return "Interact";
         }

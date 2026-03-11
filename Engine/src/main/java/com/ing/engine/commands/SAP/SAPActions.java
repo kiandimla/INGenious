@@ -226,4 +226,53 @@ public class SAPActions extends General {
 			SAPObject.dynamicValue.get(Reference).get(ObjectName).put(key, value);
 		}
 	}
+
+	@Action(object = ObjectType.BROWSER, desc = "Execute SAP transaction [<Data>]", input = InputType.YES)
+	public void sapExecuteTransaction() {
+		try {
+			Dispatch.call(SAPsession, "startTransaction", Data);
+			Report.updateTestLog(Action, "Executed transaction [" + Data + "]", Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to execute transaction. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Modify table cell with data [<Data>] in format row,column,value", input = InputType.YES)
+	public void sapModifyCell() {
+		try {
+			String[] parts = Data.split(",", 3);
+			if (parts.length < 3) {
+				Report.updateTestLog(Action, "Invalid data format. Expected: row,column,value", Status.FAILNS);
+				return;
+			}
+			int row = Integer.parseInt(parts[0].trim());
+			String column = parts[1].trim();
+			String value = parts[2].trim();
+			
+			Dispatch.call(SAPElement, "modifyCell", row, column, value);
+			Report.updateTestLog(Action, "Modified cell at row " + row + ", column " + column + " with value: " + value, Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to modify cell. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Set current table cell row to [<Data>]", input = InputType.YES)
+	public void sapSetCurrentCellRow() {
+		try {
+			Dispatch.put(SAPElement, "currentCellRow", Integer.parseInt(Data));
+			Report.updateTestLog(Action, "Set current cell row to " + Data, Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to set current cell row. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Double click on [<Object>]")
+	public void sapDoubleClick() {
+		try {
+			Dispatch.call(SAPElement, "doubleClick");
+			Report.updateTestLog(Action, "Double clicked on [" + ObjectName + "]", Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to double click. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
 }
