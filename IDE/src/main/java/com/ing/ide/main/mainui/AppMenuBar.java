@@ -253,6 +253,13 @@ public class AppMenuBar extends JMenuBar {
         playwrightOptionsMenu.add(Utils.createMenuItem("Import Playwright Recording", sActionListener));
         tools.add(playwrightOptionsMenu);
         
+        JMenu sapOptionsMenu = new JMenu("Import SAP Recording");
+        sapOptionsMenu.add(Utils.createMenuItem("Import SAP Recording", sActionListener));
+        tools.add(sapOptionsMenu);
+//        tools.add(
+//                withMnemonics(
+//                        Utils.createMenuItem("Import SAP Recording", sActionListener), 'S'));
+        
         tools.add(
                 withMnemonics(
                         withShortCut(

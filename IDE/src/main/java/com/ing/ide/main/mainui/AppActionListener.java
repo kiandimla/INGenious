@@ -14,6 +14,7 @@ import com.ing.ide.main.settings.TMSettings;
 import com.ing.ide.main.googlerecordingjson.JsonParser;
 import com.ing.ide.main.playwrightrecording.PlaywrightRecordingParser;
 import com.ing.ide.main.playwrightrecording.RecordedStepsNameDialogue;
+import com.ing.ide.main.sapscript.SapScriptParser;
 import com.ing.ide.main.ui.AboutUI;
 import com.ing.ide.main.ui.InjectScript;
 import com.ing.ide.main.ui.NewProject;
@@ -55,6 +56,8 @@ public class AppActionListener implements ActionListener {
     private final BddParser bddParser;
     
     private final JsonParser jsonParser;
+    
+    private final SapScriptParser sapScriptParser;
 
     private final InjectScript injectScript;
 
@@ -79,6 +82,7 @@ public class AppActionListener implements ActionListener {
        // scheduler = new SchedulerUI();
         bddParser = new BddParser(sMainFrame);
         jsonParser = new JsonParser(sMainFrame);
+        sapScriptParser = new SapScriptParser(sMainFrame);
         injectScript = new InjectScript();
         importTestData = new ImportTestData(sMainFrame);
     }
@@ -263,9 +267,43 @@ public class AppActionListener implements ActionListener {
                         Logger.getLogger(AppActionListener.class.getName()).log(Level.SEVERE, null, ex);
                     }
                 } 
-                 break; 
+                 break;
+            case "Import SAP Recording":
+                {
+                    try {
+                        System.out.println("DEBUG: Import SAP Recording clicked");
+                        
+                        if (sMainFrame.getProject() == null) {
+                            Notification.show("Please open a project first before importing SAP scripts.");
+                            System.out.println("ERROR: No project loaded");
+                            break;
+                        }
+                        
+                        String projectLocation = sMainFrame.getProject().getLocation();
+                        System.out.println("DEBUG: Project location: " + projectLocation);
+                        
+                        File sapScriptFile = Utils.openDialog("SAP GUI Script Tracker File", "vbs");
+                        System.out.println("DEBUG: Selected file: " + (sapScriptFile != null ? sapScriptFile.getAbsolutePath() : "null"));
+                        
+                        if (sapScriptFile != null && sapScriptFile.exists()) {
+                            System.out.println("INFO: Importing SAP Script Tracker file: " + sapScriptFile.getName());
+                            sapScriptParser.parseSapScript(sapScriptFile);
+                            sMainFrame.loadProject(projectLocation);
+                            Notification.show("SAP Script imported successfully and test cases created.");
+                        } else {
+                            System.out.println("DEBUG: File selection cancelled or file does not exist");
+                        }
+                    } catch (Exception ex) {
+                        System.err.println("ERROR: Exception in Import SAP Recording: " + ex.getMessage());
+                        ex.printStackTrace();
+                        Logger.getLogger(AppActionListener.class.getName()).log(Level.SEVERE, 
+                            "Error importing SAP Script Tracker file", ex);
+                        Notification.show("Failed to import SAP Script: " + ex.getMessage());
+                    }
+                }
+                break; 
             default:
-                System.out.println(ae.getActionCommand());
+                System.out.println("UNHANDLED ACTION: [" + ae.getActionCommand() + "]");
                 sMainFrame.getLoader().showIDontCare();
 
         }

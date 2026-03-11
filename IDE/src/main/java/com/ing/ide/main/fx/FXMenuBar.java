@@ -177,6 +177,10 @@ public class FXMenuBar extends JFXPanel {
         playwright.getItems().add(menuItem("Import Playwright Recording", "recorder"));
         tools.getItems().add(playwright);
 
+        Menu sapRecording = new Menu("Import SAP Recording");
+        sapRecording.getItems().add(menuItem("Import SAP Recording", "recorder"));
+        tools.getItems().add(sapRecording);
+
         tools.getItems().add(
                 menuItem("Har Compare", "search", KeyCode.H, KeyCombination.SHORTCUT_DOWN, KeyCombination.SHIFT_DOWN));
 
