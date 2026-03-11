@@ -282,7 +282,9 @@ public class AppActionListener implements ActionListener {
                         String projectLocation = sMainFrame.getProject().getLocation();
                         System.out.println("DEBUG: Project location: " + projectLocation);
                         
-                        File sapScriptFile = Utils.openDialog("SAP GUI Script Tracker File", "vbs");
+                        // Support multiple languages that can access SAP GUI Scripting COM API
+                        File sapScriptFile = Utils.openDialog("SAP GUI Script File (VBS, JS, PS1, PY, AU3)", 
+                            "vbs", "js", "ps1", "py", "au3", "vba");
                         System.out.println("DEBUG: Selected file: " + (sapScriptFile != null ? sapScriptFile.getAbsolutePath() : "null"));
                         
                         if (sapScriptFile != null && sapScriptFile.exists()) {

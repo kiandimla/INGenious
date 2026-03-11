@@ -23,17 +23,23 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Parser for SAP GUI Script Tracker/Recorder VBScript files.
+ * Parser for SAP GUI Script Tracker/Recorder script files and custom SAP automation scripts.
  * 
- * SAP GUI Script Tracker creates VBScript files containing SAP GUI scripting API calls.
- * This parser extracts:
+ * SAP GUI Scripting COM API is accessible from multiple languages:
+ * - VBScript (.vbs) - SAP Script Tracker native format
+ * - JavaScript (.js) - SAP Script Tracker native format
+ * - PowerShell (.ps1) - Windows automation via COM
+ * - Python (.py) - Automation via win32com/pywin32
+ * - AutoIt (.au3) - Automation scripting
+ * 
+ * This parser is language-agnostic and extracts:
  * - SAP object identifiers (wnd[0]/usr/txtFieldName)
  * - Text properties and values
  * - Actions (setText, press, select, doubleClick, etc.)
  * 
  * And converts them into INGenious test cases and SAP Object Repository entries.
  * 
- * Supported SAP GUI Script Commands:
+ * Supported SAP GUI Script Commands (all languages):
  * - session.findById().text = "value"  -> Set action
  * - session.findById().press()         -> Click action
  * - session.findById().selected = true -> Select action
@@ -41,6 +47,12 @@ import java.util.regex.Pattern;
  * - session.findById().sendVKey n      -> SendVKey action
  * - session.findById().doubleClick     -> DoubleClick action
  * - session.startTransaction "T-CODE"  -> Transaction action
+ * 
+ * Language Compatibility:
+ * - Comments: ' (VBScript/VBA), // (JavaScript), # (PowerShell/Python), ; (AutoIt)
+ * - Variable prefixes: $session (PowerShell/AutoIt), session (others)
+ * - Semicolons: Optional, works with or without
+ * - Parentheses: Flexible matching for method calls
  */
 public class SapScriptParser {
 
@@ -57,61 +69,71 @@ public class SapScriptParser {
             "session\\.findById\\(\"([^\"]+)\"\\)", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern SET_TEXT_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.(?:text|Text)\\s*=\\s*\"([^\"]*)\"?", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.(?:text|Text)\\s*=\\s*\"([^\"]*)\"?", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern PRESS_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.press\\(\\)", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.press\\(\\)", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern SELECT_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.selected\\s*=\\s*(true|false|-1|0)", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.selected\\s*=\\s*(true|false|-?\\d+|\\$true|\\$false)", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern SET_FOCUS_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.setFocus\\(\\)", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.setFocus\\(\\)", Pattern.CASE_INSENSITIVE);
     
+    // Matches: sendVKey 0 (VBScript) and sendVKey(0) (JavaScript/PowerShell/Python)
+    // Also handles: $session.findById() (PowerShell/AutoIt)
     private static final Pattern SEND_VKEY_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.sendVKey\\s+(\\d+)", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.sendVKey\\s*\\(?\\s*(\\d+)\\s*\\)?", Pattern.CASE_INSENSITIVE);
 
     private static final Pattern DOUBLE_CLICK_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.doubleClick", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.doubleClick\\(\\)", Pattern.CASE_INSENSITIVE);
 
+    // Matches: startTransaction "TX" (VBScript) and startTransaction("TX") (JavaScript/PowerShell/Python)
+    // Also handles: $session.startTransaction() (PowerShell/AutoIt)
     private static final Pattern TRANSACTION_PATTERN = Pattern.compile(
-            "session\\.startTransaction\\s+\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.startTransaction\\s*\\(?\\s*\"([^\"]+)\"\\s*\\)?", Pattern.CASE_INSENSITIVE);
 
     private static final Pattern CARET_POSITION_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.caretPosition\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.caretPosition\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private static final Pattern MODIFIED_CELL_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.modifyCell\\s*\\(\\s*(\\d+)\\s*,\\s*\"([^\"]+)\"\\s*,\\s*\"([^\"]*)\"\\s*\\)", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.modifyCell\\s*\\(\\s*(\\d+)\\s*,\\s*\"([^\"]+)\"\\s*,\\s*\"([^\"]*)\"\\s*\\)", Pattern.CASE_INSENSITIVE);
 
     private static final Pattern SET_CURRENT_CELL_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.currentCellRow\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.currentCellRow\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
 
     // Additional patterns for complete SAPActions coverage
     private static final Pattern DROPDOWN_KEY_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.(?:Key|key)\\s*=\\s*\"([^\"]*)\"?", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.Key\\s*=\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern DROPDOWN_SELECT_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.Select\\s*\\(?\\s*(\\d+)\\s*\\)?", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.Select\\s*\\(?\\s*(\\d+)\\s*\\)?", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern DOUBLE_CLICK_CURRENT_CELL_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.doubleClickCurrentCell", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.doubleClickCurrentCell", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern TAB_SELECT_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.select\\(\\)", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.select\\(\\)", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern COMBO_SELECTED_TEXT_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)\\.selected\\s*=\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.value\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
 
     public SapScriptParser(AppMainFrame sMainFrame) {
         this.sMainFrame = sMainFrame;
     }
 
     /**
-     * Parse a SAP GUI Script Tracker VBS file
+     * Parse a SAP GUI Script file (VBScript, JavaScript, PowerShell, Python, AutoIt, or custom).
+     * The parser is language-agnostic and extracts SAP COM API calls regardless of source language.
      */
     public void parseSapScript(File file) throws Exception {
         if (file == null || !file.exists()) {
             throw new IllegalArgumentException("SAP Script file does not exist: " + file);
+        }
+        
+        String extension = FilenameUtils.getExtension(file.getName()).toLowerCase();
+        if (!extension.matches("vbs|js|ps1|py|au3|vba")) {
+            LOGGER.warning("File extension '" + extension + "' is uncommon for SAP scripts. Supported: .vbs, .js, .ps1, .py, .au3, .vba");
         }
 
         try {
@@ -163,7 +185,18 @@ public class SapScriptParser {
                 String trimmedLine = line.trim();
                 
                 // Skip comments and empty lines
-                if (trimmedLine.isEmpty() || trimmedLine.startsWith("'") || trimmedLine.startsWith("REM")) {
+                // VBScript/VBA: ' or REM
+                // JavaScript: // or /* */
+                // PowerShell/Python: #
+                // AutoIt: ;
+                if (trimmedLine.isEmpty() 
+                    || trimmedLine.startsWith("'")      // VBScript/VBA comment
+                    || trimmedLine.startsWith("REM")   // VBScript/VBA comment
+                    || trimmedLine.startsWith("//")    // JavaScript comment
+                    || trimmedLine.startsWith("/*")    // JavaScript block comment
+                    || trimmedLine.startsWith("*")     // JavaScript block comment continuation
+                    || trimmedLine.startsWith("#")     // PowerShell/Python comment
+                    || trimmedLine.startsWith(";")) {  // AutoIt comment
                     continue;
                 }
                 
