@@ -33,6 +33,9 @@ public class SapORPage implements ORPageInf<SapORObject, SapOR> {
 
     @JsonIgnore
     private SapOR root;
+    
+    @JacksonXmlProperty(isAttribute = true, localName = "source")
+    private SapOR.ORScope source = SapOR.ORScope.PROJECT;
 
     public SapORPage() {
         this.objectGroups = new ArrayList<>();
@@ -259,5 +262,13 @@ public class SapORPage implements ORPageInf<SapORObject, SapOR> {
     @Override
     public void sort() {
         ORUtils.sort(this);
+    }
+    
+    public SapOR.ORScope getSource() {
+        return source;
+    }
+
+    public void setSource(SapOR.ORScope source) {
+        this.source = source;
     }
 }

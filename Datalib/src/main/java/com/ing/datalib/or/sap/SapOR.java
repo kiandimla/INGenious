@@ -92,6 +92,9 @@ public class SapOR implements ORRootInf<SapORPage> {
         this.pages = pages;
         for (SapORPage page : pages) {
             page.setRoot(this);
+            if (page.getSource() == null) {
+                page.setSource(isShared() ? ORScope.SHARED : ORScope.PROJECT);
+            }
         }
     }
 
@@ -124,6 +127,7 @@ public class SapOR implements ORRootInf<SapORPage> {
     public SapORPage addPage(String pageName) {
         if (getPageByName(pageName) == null) {
             SapORPage page = new SapORPage(pageName, this);
+            page.setSource(isShared() ? ORScope.SHARED : ORScope.PROJECT);
             pages.add(page);
             new File(page.getRepLocation()).mkdirs();
             setSaved(false);
