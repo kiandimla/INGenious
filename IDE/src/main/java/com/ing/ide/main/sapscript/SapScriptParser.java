@@ -161,7 +161,7 @@ public class SapScriptParser {
         testCase.put("pageName", testCase.get("fileName"));
         
         // SAP Object Repository path
-        filePath.put("sapORFilePath", filePath.get("projectPath") + "/OR.object");
+        filePath.put("sapORFilePath", filePath.get("projectPath") + "/SapOR.object");
         
         // Test scenario path
         testCase.put("testScenarioName", (filePath.get("projectPath") + "/TestPlan/" + testCase.get("fileName")).replace("\\", "/"));
@@ -447,7 +447,8 @@ public class SapScriptParser {
         Element rootElement = doc.createElement("Root");
         doc.appendChild(rootElement);
         rootElement.setAttribute("ref", testCase.get("fileName"));
-        rootElement.setAttribute("type", "OR");
+        rootElement.setAttribute("type", "SapOR");
+        rootElement.setAttribute("scope", "PROJECT");
         
         // Create page
         Element page = createSapORPage(doc);
@@ -509,7 +510,7 @@ public class SapScriptParser {
         
         // Add id property (SAP ID path)
         Element idProp = doc.createElement("Property");
-        idProp.setAttribute("ref", "SAPId");
+        idProp.setAttribute("ref", "id");
         idProp.setAttribute("value", sapObj.id);
         idProp.setAttribute("pref", "1");
         object.appendChild(idProp);
@@ -534,6 +535,9 @@ public class SapScriptParser {
         File testCaseFile = new File(testCasePath);
         
         try (PrintWriter writer = new PrintWriter(testCaseFile)) {
+            // Write CSV header
+            writer.println("Step,ObjectName,Description,Action,Input,Condition,Reference");
+            
             int stepNo = 1;
             
             for (SapAction action : sapActions) {
@@ -541,16 +545,16 @@ public class SapScriptParser {
                     // Transaction action - no object reference needed
                     String stepName = "Execute Transaction " + action.value;
                     writer.println(String.format("%d,%s,%s,%s,%s,%s,%s", 
-                        stepNo++, stepName, "", "executeTransaction", action.value, "", ""));
+                        stepNo++, "SAP_SYSTEM", stepName, "executeTransaction", action.value, "", ""));
                 } else {
                     String objectName = generateObjectName(action.objectId);
-                    String stepName = action.actionType + " " + objectName;
+                    String stepName = action.actionType + " [<Object>]";
                     String sapAction = mapToINGeniousAction(action.actionType);
-                    String object = testCase.get("pageName") + ":" + objectName;
+                    String reference = "[Project] " + testCase.get("pageName");
                     String data = escapeCSV(action.value);
                     
                     writer.println(String.format("%d,%s,%s,%s,%s,%s,%s", 
-                        stepNo++, stepName, "", sapAction, data, "", object));
+                        stepNo++, objectName, stepName, sapAction, data, "", reference));
                 }
             }
         }

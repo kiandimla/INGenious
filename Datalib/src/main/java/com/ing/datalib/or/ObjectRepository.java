@@ -132,6 +132,10 @@ public class ObjectRepository {
             if (sharedSapFile.exists()) {
                 sapSharedOR = XML_MAPPER.readValue(sharedSapFile, SapOR.class);
                 sapSharedOR.setName("Shared SAP Objects");
+                // Ensure parent references are properly set after deserialization
+                if (sapSharedOR.getPages() != null && !sapSharedOR.getPages().isEmpty()) {
+                    sapSharedOR.setPages(sapSharedOR.getPages());
+                }
             } else {
                 sapSharedOR = new SapOR("Shared SAP Objects");
             }
@@ -192,6 +196,10 @@ public class ObjectRepository {
             } else if (!useYamlFormat && new File(getSapORLocation()).exists()) {
                 sapProjectOR = XML_MAPPER.readValue(new File(getSapORLocation()), SapOR.class);
                 sapProjectOR.setName(sProject.getName());
+                // Ensure parent references are properly set after deserialization
+                if (sapProjectOR.getPages() != null && !sapProjectOR.getPages().isEmpty()) {
+                    sapProjectOR.setPages(sapProjectOR.getPages());
+                }
             } else {
                 sapProjectOR = new SapOR(sProject.getName());
             }
