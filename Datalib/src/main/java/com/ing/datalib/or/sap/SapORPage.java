@@ -76,6 +76,10 @@ public class SapORPage implements ORPageInf<SapORObject, SapOR> {
         this.objectGroups = objectGroups;
         for (ObjectGroup<SapORObject> objectGroup : objectGroups) {
             objectGroup.setParent(this);
+            // Ensure nested objects also have their parents set
+            if (objectGroup.getObjects() != null && !objectGroup.getObjects().isEmpty()) {
+                objectGroup.setObjects(objectGroup.getObjects());
+            }
         }
     }
 

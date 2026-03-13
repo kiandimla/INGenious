@@ -191,16 +191,33 @@ public class ObjectRepository {
             
             // Load SAP Project OR (YAML or XML based on detection)
             if (useYamlFormat && yamlReader.sapORExists(orRepLocation)) {
+                LOG.info("Loading SAP OR in YAML format...");
                 sapProjectOR = yamlReader.readSapOR(orRepLocation);
                 sapProjectOR.setName(sProject.getName());
+                LOG.info("SAP OR loaded: " + sapProjectOR.getPages().size() + " pages");
             } else if (!useYamlFormat && new File(getSapORLocation()).exists()) {
+                LOG.info("Loading SAP OR in XML format from: " + getSapORLocation());
                 sapProjectOR = XML_MAPPER.readValue(new File(getSapORLocation()), SapOR.class);
                 sapProjectOR.setName(sProject.getName());
                 // Ensure parent references are properly set after deserialization
                 if (sapProjectOR.getPages() != null && !sapProjectOR.getPages().isEmpty()) {
+                    LOG.info("Setting parent references for " + sapProjectOR.getPages().size() + " SAP pages");
                     sapProjectOR.setPages(sapProjectOR.getPages());
+                    
+                    // Log page details for debugging
+                    for (SapORPage page : sapProjectOR.getPages()) {
+                        int groupCount = page.getObjectGroups() != null ? page.getObjectGroups().size() : 0;
+                        int objectCount = 0;
+                        if (page.getObjectGroups() != null) {
+                            for (ObjectGroup<SapORObject> group : page.getObjectGroups()) {
+                                objectCount += group.getObjects() != null ? group.getObjects().size() : 0;
+                            }
+                        }
+                        LOG.info("  - Page: " + page.getName() + " with " + groupCount + " groups and " + objectCount + " objects");
+                    }
                 }
             } else {
+                LOG.info("No existing SAP OR found, creating new empty SAP OR");
                 sapProjectOR = new SapOR(sProject.getName());
             }
             if (sapProjectOR != null) {

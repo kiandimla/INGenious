@@ -374,8 +374,11 @@ public class SapScriptParser {
 
     private void addSapObject(String id, String type, String transaction) {
         if (!sapObjects.containsKey(id)) {
-            sapObjects.put(id, new SapObject(id, type, transaction));
-            LOGGER.fine(String.format("Added SAP object: id=%s, type=%s", id, type));
+            SapObject obj = new SapObject(id, type, transaction);
+            // Extract and store text from ID for use in test case generation
+            obj.text = extractTextFromId(id);
+            sapObjects.put(id, obj);
+            LOGGER.fine(String.format("Added SAP object: id=%s, type=%s, text=%s", id, type, obj.text));
         }
     }
     
@@ -537,23 +540,23 @@ public class SapScriptParser {
         try (PrintWriter writer = new PrintWriter(testCaseFile)) {
             // Write CSV header
             writer.println("Step,ObjectName,Description,Action,Input,Condition,Reference");
-            
+
             int stepNo = 1;
-            
+
             for (SapAction action : sapActions) {
                 if (action.actionType.equals("Transaction")) {
                     // Transaction action - no object reference needed
                     String stepName = "Execute Transaction " + action.value;
-                    writer.println(String.format("%d,%s,%s,%s,%s,%s,%s", 
+                    writer.println(String.format("%d,%s,%s,%s,%s,%s,%s",
                         stepNo++, "SAP_SYSTEM", stepName, "executeTransaction", action.value, "", ""));
                 } else {
                     String objectName = generateObjectName(action.objectId);
                     String stepName = action.actionType + " [<Object>]";
                     String sapAction = mapToINGeniousAction(action.actionType);
                     String reference = "[Project] " + testCase.get("pageName");
+
                     String data = escapeCSV(action.value);
-                    
-                    writer.println(String.format("%d,%s,%s,%s,%s,%s,%s", 
+                    writer.println(String.format("%d,%s,%s,%s,%s,%s,%s",
                         stepNo++, objectName, stepName, sapAction, data, "", reference));
                 }
             }

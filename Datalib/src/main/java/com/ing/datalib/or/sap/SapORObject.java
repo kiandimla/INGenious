@@ -15,6 +15,7 @@ import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.ing.datalib.component.utils.FileUtils;
@@ -24,10 +25,14 @@ import com.ing.datalib.or.common.ORUtils;
 import com.ing.datalib.or.common.ObjectGroup;
 import com.ing.datalib.undoredo.UndoRedoModel;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class SapORObject extends UndoRedoModel implements ORObjectInf {
 
     @JacksonXmlProperty(isAttribute = true, localName = "ref")
     private String name;
+
+    @JacksonXmlProperty(isAttribute = true)
+    private String frame;
 
     @JacksonXmlProperty(localName = "Property")
     @JacksonXmlElementWrapper(useWrapping = false, localName = "Property")
@@ -88,6 +93,14 @@ public class SapORObject extends UndoRedoModel implements ORObjectInf {
         this.name = name;
     }
 
+    public String getFrame() {
+        return frame;
+    }
+
+    public void setFrame(String frame) {
+        this.frame = frame;
+    }
+    
     @JsonIgnore
     @Override
     public TreeNode getChildAt(int i) {
