@@ -69,7 +69,7 @@ public class SapScriptParser {
             "session\\.findById\\(\"([^\"]+)\"\\)", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern SET_TEXT_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.(?:text|Text)\\s*=\\s*\"([^\"]*)\"?", Pattern.CASE_INSENSITIVE);
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.(?:text|Text)\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
     
     private static final Pattern PRESS_PATTERN = Pattern.compile(
             "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.press\\(\\)", Pattern.CASE_INSENSITIVE);
@@ -117,6 +117,10 @@ public class SapScriptParser {
     
     private static final Pattern COMBO_SELECTED_TEXT_PATTERN = Pattern.compile(
             "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.value\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
+    
+    // Pattern to capture general property assignments (name, tooltip, etc.) - for object metadata only
+    private static final Pattern PROPERTY_ASSIGNMENT_PATTERN = Pattern.compile(
+            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.([a-zA-Z_][a-zA-Z0-9_]*)\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
 
     public SapScriptParser(AppMainFrame sMainFrame) {
         this.sMainFrame = sMainFrame;
@@ -226,6 +230,8 @@ public class SapScriptParser {
             String value = setTextMatcher.group(2);
             String objType = determineObjectType(id);
             addSapObject(id, objType, transaction);
+            // Store the text property value in the object
+            addPropertyToSapObject(id, "text", value);
             sapActions.add(new SapAction("Set", id, value, lineNumber));
             return;
         }
@@ -370,15 +376,47 @@ public class SapScriptParser {
             String id = findByIdMatcher.group(1);
             addSapObject(id, "Element", transaction);
         }
+        
+        // Try to capture general property assignments (name, Text, tooltip, etc.) for object metadata
+        // This should be tried after all action patterns to capture properties that don't trigger actions
+        Matcher propertyMatcher = PROPERTY_ASSIGNMENT_PATTERN.matcher(line);
+        if (propertyMatcher.find()) {
+            String id = propertyMatcher.group(1);
+            String propertyName = propertyMatcher.group(2);
+            String propertyValue = propertyMatcher.group(3);
+            
+            // Skip if this is an action property (already handled above)
+            String propLower = propertyName.toLowerCase();
+            if (!propLower.equals("text") && !propLower.equals("selected") && !propLower.equals("key") 
+                && !propLower.equals("value") && !propLower.equals("caretposition") 
+                && !propLower.equals("currentcellrow")) {
+                // This is a metadata property like "name", "Text" (capital T), "tooltip", etc.
+                addPropertyToSapObject(id, propertyName, propertyValue);
+                LOGGER.fine(String.format("Captured property: %s.%s = %s", id, propertyName, propertyValue));
+            }
+        }
     }
 
     private void addSapObject(String id, String type, String transaction) {
         if (!sapObjects.containsKey(id)) {
             SapObject obj = new SapObject(id, type, transaction);
-            // Extract and store text from ID for use in test case generation
+            // Extract and store text from ID for use in test case generation (fallback if not provided)
             obj.text = extractTextFromId(id);
             sapObjects.put(id, obj);
             LOGGER.fine(String.format("Added SAP object: id=%s, type=%s, text=%s", id, type, obj.text));
+        }
+    }
+    
+    private void addPropertyToSapObject(String id, String propertyName, String propertyValue) {
+        // Ensure the object exists
+        if (sapObjects.containsKey(id)) {
+            SapObject obj = sapObjects.get(id);
+            obj.setProperty(propertyName, propertyValue);
+        } else {
+            // Create object if it doesn't exist yet
+            SapObject obj = new SapObject(id, determineObjectType(id), null);
+            obj.setProperty(propertyName, propertyValue);
+            sapObjects.put(id, obj);
         }
     }
     
@@ -511,21 +549,44 @@ public class SapScriptParser {
         object.setAttribute("ref", objectName);
         object.setAttribute("frame", "");
         
-        // Add id property (SAP ID path)
+        int propIndex = 1;
+        
+        // Add id property (SAP ID path) - always first
         Element idProp = doc.createElement("Property");
         idProp.setAttribute("ref", "id");
         idProp.setAttribute("value", sapObj.id);
-        idProp.setAttribute("pref", "1");
+        idProp.setAttribute("pref", String.valueOf(propIndex++));
         object.appendChild(idProp);
         
-        // Add Text property (extracted from ID if available)
-        String extractedText = extractTextFromId(sapObj.id);
-        if (extractedText != null && !extractedText.isEmpty()) {
+        // Add text property if captured from script or extracted from ID
+        String textValue = sapObj.text;
+        if (textValue == null || textValue.isEmpty()) {
+            textValue = extractTextFromId(sapObj.id);
+        }
+        if (textValue != null && !textValue.isEmpty()) {
             Element textProp = doc.createElement("Property");
             textProp.setAttribute("ref", "Text");
-            textProp.setAttribute("value", extractedText);
-            textProp.setAttribute("pref", "2");
+            textProp.setAttribute("value", textValue);
+            textProp.setAttribute("pref", String.valueOf(propIndex++));
             object.appendChild(textProp);
+        }
+        
+        // Add name property if available
+        if (sapObj.name != null && !sapObj.name.isEmpty()) {
+            Element nameProp = doc.createElement("Property");
+            nameProp.setAttribute("ref", "name");
+            nameProp.setAttribute("value", sapObj.name);
+            nameProp.setAttribute("pref", String.valueOf(propIndex++));
+            object.appendChild(nameProp);
+        }
+        
+        // Add any additional properties captured from the script
+        for (Map.Entry<String, String> entry : sapObj.additionalProperties.entrySet()) {
+            Element additionalProp = doc.createElement("Property");
+            additionalProp.setAttribute("ref", entry.getKey());
+            additionalProp.setAttribute("value", entry.getValue());
+            additionalProp.setAttribute("pref", String.valueOf(propIndex++));
+            object.appendChild(additionalProp);
         }
         
         return object;
@@ -704,13 +765,31 @@ public class SapScriptParser {
         String id;
         String type;
         String text;
+        String name;
         String transaction;
+        Map<String, String> additionalProperties;
 
         SapObject(String id, String type, String transaction) {
             this.id = id;
             this.type = type;
             this.transaction = transaction;
             this.text = "";
+            this.name = "";
+            this.additionalProperties = new HashMap<>();
+        }
+        
+        void setProperty(String propertyName, String propertyValue) {
+            switch (propertyName.toLowerCase()) {
+                case "text":
+                    this.text = propertyValue;
+                    break;
+                case "name":
+                    this.name = propertyValue;
+                    break;
+                default:
+                    additionalProperties.put(propertyName, propertyValue);
+                    break;
+            }
         }
     }
 

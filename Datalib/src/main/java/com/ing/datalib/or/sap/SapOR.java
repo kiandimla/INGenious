@@ -26,6 +26,7 @@ public class SapOR implements ORRootInf<SapORPage> {
     public final static List<String> OBJECT_PROPS
             = new ArrayList<>(Arrays.asList(
                     "id",
+                    "name",
                     "Text"));
 
     @JacksonXmlProperty(isAttribute = true, localName = "ref")
@@ -41,6 +42,7 @@ public class SapOR implements ORRootInf<SapORPage> {
     @JacksonXmlProperty(isAttribute = true)
     private ORScope scope = ORScope.PROJECT;
     
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     @JacksonXmlElementWrapper(localName = "projects")
     @JacksonXmlProperty(localName = "project")
     private List<String> projects = new ArrayList<>();
