@@ -318,8 +318,7 @@ public class SapScriptParser {
             name = name.substring(lastSlash + 1);
         }
         
-        // Remove prefixes like txt, btn, cbo, chk, tbl, tab, etc.
-        name = name.replaceAll("^(txt|btn|cbo|chk|tbl|tab|usr|wnd|sub|ctxt|cmbBox|rad)", "");
+        // Keep prefixes (txt, btn, cbo, etc.) for clarity and SAP convention alignment
         
         // Replace - with _
         name = name.replace("-", "_");
