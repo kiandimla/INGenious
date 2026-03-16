@@ -167,21 +167,17 @@ public class SapScriptParser {
         Element page = doc.createElement("Page");
         page.setAttribute("ref", testCase.get("pageName"));
         
-        // Group objects by type
-        Map<String, List<SapLanguageParser.SapObject>> groupedObjects = new LinkedHashMap<>();
-        for (SapLanguageParser.SapObject obj : sapObjects.values()) {
-            groupedObjects.computeIfAbsent(obj.type, k -> new ArrayList<>()).add(obj);
-        }
-        
-        // Create object groups
-        for (Map.Entry<String, List<SapLanguageParser.SapObject>> entry : groupedObjects.entrySet()) {
-            Element objectGroup = doc.createElement("ObjectGroup");
-            objectGroup.setAttribute("ref", entry.getKey());
+        // Create one ObjectGroup per SAP object (not grouped by type)
+        for (SapLanguageParser.SapObject sapObj : sapObjects.values()) {
+            String objectName = generateObjectName(sapObj.id);
             
-            for (SapLanguageParser.SapObject sapObj : entry.getValue()) {
-                Element object = createSapORObject(doc, sapObj, objectGroup);
-                objectGroup.appendChild(object);
-            }
+            // Create ObjectGroup with the object name as ref
+            Element objectGroup = doc.createElement("ObjectGroup");
+            objectGroup.setAttribute("ref", objectName);
+            
+            // Create Object with the same name as ref
+            Element object = createSapORObject(doc, sapObj, objectName);
+            objectGroup.appendChild(object);
             
             page.appendChild(objectGroup);
         }
@@ -189,32 +185,27 @@ public class SapScriptParser {
         return page;
     }
 
-    private Element createSapORObject(Document doc, SapLanguageParser.SapObject sapObj, Element objectGroup) {
-        String objectName = generateObjectName(sapObj.id);
+    private Element createSapORObject(Document doc, SapLanguageParser.SapObject sapObj, String objectName) {
         
         Element object = doc.createElement("Object");
         object.setAttribute("ref", objectName);
         object.setAttribute("frame", "");
         
+        // SAP Object Repository only has 3 properties (from SapOR.OBJECT_PROPS):
+        // 1. id - SAP findById path (always required)
+        // 2. name - Object name (only if not empty)
+        // 3. Text - Text value (only if captured from script)
+        
         int propIndex = 1;
         
-        // Add id property (SAP ID path) - always first
+        // Property 1: id (SAP findById path) - always required
         Element idProp = doc.createElement("Property");
         idProp.setAttribute("ref", "id");
         idProp.setAttribute("value", sapObj.id);
         idProp.setAttribute("pref", String.valueOf(propIndex++));
         object.appendChild(idProp);
         
-        // Add text property ONLY if explicitly captured from script
-        if (sapObj.text != null && !sapObj.text.isEmpty()) {
-            Element textProp = doc.createElement("Property");
-            textProp.setAttribute("ref", "Text");
-            textProp.setAttribute("value", sapObj.text);
-            textProp.setAttribute("pref", String.valueOf(propIndex++));
-            object.appendChild(textProp);
-        }
-        
-        // Add name property if available
+        // Property 2: name (only add if not empty)
         if (sapObj.name != null && !sapObj.name.isEmpty()) {
             Element nameProp = doc.createElement("Property");
             nameProp.setAttribute("ref", "name");
@@ -223,13 +214,13 @@ public class SapScriptParser {
             object.appendChild(nameProp);
         }
         
-        // Add any additional properties captured from the script
-        for (Map.Entry<String, String> entry : sapObj.additionalProperties.entrySet()) {
-            Element additionalProp = doc.createElement("Property");
-            additionalProp.setAttribute("ref", entry.getKey());
-            additionalProp.setAttribute("value", entry.getValue());
-            additionalProp.setAttribute("pref", String.valueOf(propIndex++));
-            object.appendChild(additionalProp);
+        // Property 3: Text (only add if captured from script)
+        if (sapObj.text != null && !sapObj.text.isEmpty()) {
+            Element textProp = doc.createElement("Property");
+            textProp.setAttribute("ref", "Text");
+            textProp.setAttribute("value", sapObj.text);
+            textProp.setAttribute("pref", String.valueOf(propIndex++));
+            object.appendChild(textProp);
         }
         
         return object;
@@ -259,7 +250,13 @@ public class SapScriptParser {
                     String sapAction = mapToINGeniousAction(action.actionType);
                     String reference = "[Project] " + testCase.get("pageName");
 
-                    String data = escapeCSV(action.value);
+                    // Add @ prefix whenever there's a value to reference static value from object
+                    String data = action.value;
+                    if (data != null && !data.isEmpty()) {
+                        data = "@" + data;
+                    }
+                    data = escapeCSV(data);
+                    
                     writer.println(String.format("%d,%s,%s,%s,%s,%s,%s",
                         stepNo++, objectName, stepName, sapAction, data, "", reference));
                 }
