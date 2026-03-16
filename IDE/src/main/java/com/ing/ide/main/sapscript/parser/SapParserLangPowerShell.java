@@ -66,7 +66,7 @@ public class SapParserLangPowerShell extends SapLanguageParser {
     
     @Override
     protected String getSessionPrefix() {
-        return "\\$"; // PowerShell uses $ prefix for variables
+        return "$"; // PowerShell uses $ prefix for variables (literal, will be quoted by Pattern.quote())
     }
     
     @Override
