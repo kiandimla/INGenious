@@ -24,6 +24,11 @@ public abstract class SapLanguageParser {
     protected Map<String, SapObject> sapObjects = new LinkedHashMap<>();
     protected List<SapAction> sapActions = new ArrayList<>();
     
+    // Statistics tracking
+    protected int linesProcessed = 0;
+    protected int linesParsed = 0;
+    protected List<String> warnings = new ArrayList<>();
+    
     /**
      * Get the language name for this parser.
      */
@@ -50,13 +55,20 @@ public abstract class SapLanguageParser {
     public void parse(File file) throws IOException {
         LOGGER.info("Parsing SAP Script file with " + getLanguageName() + " parser: " + file.getAbsolutePath());
         
+        // Reset statistics
+        linesProcessed = 0;
+        linesParsed = 0;
+        warnings.clear();
+        
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
             int lineNumber = 0;
             String currentTransaction = null;
+            int actionCountBefore;
             
             while ((line = reader.readLine()) != null) {
                 lineNumber++;
+                linesProcessed++;
                 String trimmedLine = line.trim();
                 
                 // Skip empty lines and comments
@@ -64,17 +76,25 @@ public abstract class SapLanguageParser {
                     continue;
                 }
                 
+                actionCountBefore = sapActions.size();
+                
                 // Extract transaction
                 String transaction = extractTransaction(trimmedLine);
                 if (transaction != null) {
                     currentTransaction = transaction;
                     LOGGER.fine("Found transaction: " + currentTransaction);
                     sapActions.add(new SapAction("Transaction", "SAP_SYSTEM", currentTransaction, lineNumber));
+                    linesParsed++;
                     continue;
                 }
                 
                 // Parse SAP GUI actions
                 parseSapAction(trimmedLine, lineNumber, currentTransaction);
+                
+                // If an action was added, count this line as parsed
+                if (sapActions.size() > actionCountBefore) {
+                    linesParsed++;
+                }
             }
         }
         
@@ -504,6 +524,37 @@ public abstract class SapLanguageParser {
                     break;
             }
         }
+    }
+    
+    /**
+     * Parse a SAP script file with statistics tracking.
+     * Returns a SapParseResult with detailed metrics about the parse operation.
+     */
+    public SapParseResult parseWithStats(File file) throws IOException {
+        long startTime = System.currentTimeMillis();
+        parse(file);
+        long parseTime = System.currentTimeMillis() - startTime;
+        
+        return new SapParseResult(
+            sapObjects.size(),
+            sapActions.size(),
+            linesProcessed,
+            linesParsed,
+            parseTime,
+            warnings,
+            calculateActionTypeCounts()
+        );
+    }
+    
+    /**
+     * Calculate count of each action type from parsed actions.
+     */
+    protected Map<String, Integer> calculateActionTypeCounts() {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (SapAction action : sapActions) {
+            counts.merge(action.actionType, 1, Integer::sum);
+        }
+        return counts;
     }
 
     public static class SapAction {

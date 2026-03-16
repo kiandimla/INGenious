@@ -47,9 +47,44 @@ public class SapScriptParser {
     private final Map<String, String> testCase = new HashMap<>();
     private Map<String, SapLanguageParser.SapObject> sapObjects = new LinkedHashMap<>();
     private List<SapLanguageParser.SapAction> sapActions = new ArrayList<>();
+    
+    // Track used object names to avoid duplicates
+    private final Set<String> usedObjectNames = new HashSet<>();
+    
+    // Map from original object ID to generated unique name (to ensure consistency)
+    private final Map<String, String> objectIdToNameCache = new HashMap<>();
 
     public SapScriptParser(AppMainFrame sMainFrame) {
         this.sMainFrame = sMainFrame;
+    }
+    
+    /**
+     * Validate input file before parsing.
+     * Checks file size, readability, and content.
+     */
+    private void validateInputFile(File file) throws IOException {
+        // Check file size
+        long fileSize = file.length();
+        if (fileSize > SapParserConstants.MAX_FILE_SIZE_BYTES) {
+            throw new IllegalArgumentException(
+                String.format("File too large: %.2f MB. Maximum size: %s", 
+                    fileSize / (1024.0 * 1024.0), 
+                    SapParserConstants.MAX_FILE_SIZE_DISPLAY));
+        }
+        
+        // Check file is readable
+        if (!file.canRead()) {
+            throw new IOException("Cannot read file: " + file.getAbsolutePath() + 
+                ". Check file permissions.");
+        }
+        
+        // Check not empty
+        if (fileSize == 0) {
+            throw new IllegalArgumentException("File is empty: " + file.getName());
+        }
+        
+        LOGGER.fine(String.format("File validation passed: %s (%.2f KB)", 
+            file.getName(), fileSize / 1024.0));
     }
 
     /**
@@ -61,6 +96,9 @@ public class SapScriptParser {
             throw new IllegalArgumentException("SAP Script file does not exist: " + file);
         }
         
+        // Validate file before processing
+        validateInputFile(file);
+        
         String extension = FilenameUtils.getExtension(file.getName()).toLowerCase();
         if (!SapParserFactory.isSupported(extension)) {
             LOGGER.warning(String.format("File extension '%s' is uncommon for SAP scripts. Supported: %s", 
@@ -70,6 +108,10 @@ public class SapScriptParser {
         try {
             System.out.println("Starting SAP Script import: " + file.getName());
             initializeFilePaths(file);
+            
+            // Clear object name tracking for new parse
+            usedObjectNames.clear();
+            objectIdToNameCache.clear();
             
             // Use factory to get language-specific parser
             SapLanguageParser languageParser = SapParserFactory.createParser(file);
@@ -88,10 +130,24 @@ public class SapScriptParser {
             
             System.out.println("Successfully imported SAP Script: " + file.getName());
             LOGGER.info(String.format("SAP Script parsing completed successfully. Created %d test steps.", sapActions.size()));
+        } catch (IOException ex) {
+            String errorMsg = "Cannot read SAP script file: " + file.getName() + 
+                ". Ensure file exists and is readable.";
+            LOGGER.log(Level.SEVERE, errorMsg, ex);
+            System.err.println("File Error: " + errorMsg);
+            throw new IOException(errorMsg, ex);
+        } catch (IllegalArgumentException ex) {
+            String errorMsg = "Invalid SAP script format in file: " + file.getName() + 
+                ". " + ex.getMessage();
+            LOGGER.log(Level.SEVERE, errorMsg, ex);
+            System.err.println("Validation Error: " + errorMsg);
+            throw new IllegalArgumentException(errorMsg, ex);
         } catch (Exception ex) {
-            LOGGER.log(Level.SEVERE, "Error parsing SAP Script file", ex);
-            System.err.println("Failed to import SAP Script: " + ex.getMessage());
-            throw ex;
+            String errorMsg = "Unexpected error importing SAP script: " + file.getName() + 
+                ". " + ex.getMessage();
+            LOGGER.log(Level.SEVERE, errorMsg, ex);
+            System.err.println("Import Error: " + errorMsg);
+            throw new Exception(errorMsg, ex);
         }
     }
 
@@ -169,7 +225,7 @@ public class SapScriptParser {
         
         // Create one ObjectGroup per SAP object (not grouped by type)
         for (SapLanguageParser.SapObject sapObj : sapObjects.values()) {
-            String objectName = generateObjectName(sapObj.id);
+            String objectName = generateUniqueObjectName(sapObj.id);
             
             // Create ObjectGroup with the object name as ref
             Element objectGroup = doc.createElement("ObjectGroup");
@@ -245,7 +301,7 @@ public class SapScriptParser {
                     writer.println(String.format("%d,%s,%s,%s,%s,%s,%s",
                         stepNo++, "SAP_SYSTEM", stepName, "executeTransaction", action.value, "", ""));
                 } else {
-                    String objectName = generateObjectName(action.objectId);
+                    String objectName = generateUniqueObjectName(action.objectId);
                     String stepName = action.actionType + " [<Object>]";
                     String sapAction = mapToINGeniousAction(action.actionType);
                     String reference = "[Project] " + testCase.get("pageName");
@@ -340,6 +396,32 @@ public class SapScriptParser {
         }
         
         return name;
+    }
+    
+    /**
+     * Generate a unique object name, handling collisions by appending a counter.
+     * Prevents duplicate object names in the Object Repository.
+     * Uses caching to ensure the same ID always returns the same unique name.
+     */
+    private String generateUniqueObjectName(String id) {
+        // Check cache first - return cached name if already generated
+        if (objectIdToNameCache.containsKey(id)) {
+            return objectIdToNameCache.get(id);
+        }
+        
+        String baseName = generateObjectName(id);
+        String uniqueName = baseName;
+        int counter = 1;
+        
+        // Ensure uniqueness
+        while (usedObjectNames.contains(uniqueName)) {
+            uniqueName = baseName + "_" + counter++;
+        }
+        
+        usedObjectNames.add(uniqueName);
+        objectIdToNameCache.put(id, uniqueName);
+        LOGGER.fine("Generated unique object name: " + uniqueName + " from " + id);
+        return uniqueName;
     }
 
     private String getUniqueName(File directory, String baseName) {
