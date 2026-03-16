@@ -283,8 +283,8 @@ public class AppActionListener implements ActionListener {
                         System.out.println("DEBUG: Project location: " + projectLocation);
                         
                         // Support multiple languages that can access SAP GUI Scripting COM API
-                        File sapScriptFile = Utils.openDialog("SAP GUI Script File (VBS, JS, PS1, PY, AU3)", 
-                            "vbs", "js", "ps1", "py", "au3", "vba");
+                        File sapScriptFile = Utils.openDialog("SAP GUI Script Files (VBS, JS, PS1, PY, AU3, CS, VB, JAVA)", 
+                            "vbs", "vba", "js", "ps1", "py", "au3", "cs", "vb", "java", "jsh");
                         System.out.println("DEBUG: Selected file: " + (sapScriptFile != null ? sapScriptFile.getAbsolutePath() : "null"));
                         
                         if (sapScriptFile != null && sapScriptFile.exists()) {

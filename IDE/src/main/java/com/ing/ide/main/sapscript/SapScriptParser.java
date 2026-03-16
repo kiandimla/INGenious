@@ -1,15 +1,15 @@
 package com.ing.ide.main.sapscript;
 
 import com.ing.ide.main.mainui.AppMainFrame;
+import com.ing.ide.main.sapscript.parser.SapLanguageParser;
+import com.ing.ide.main.sapscript.parser.SapParserFactory;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.xml.sax.SAXException;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
@@ -19,108 +19,34 @@ import java.io.*;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Parser for SAP GUI Script Tracker/Recorder script files and custom SAP automation scripts.
+ * Main orchestrator for SAP GUI Script parsing with language-specific parser delegation.
  * 
- * SAP GUI Scripting COM API is accessible from multiple languages:
- * - VBScript (.vbs) - SAP Script Tracker native format
- * - JavaScript (.js) - SAP Script Tracker native format
+ * This class uses language-specific parsers to extract SAP GUI commands from various
+ * scripting languages and converts them into INGenious test cases and SAP Object Repository entries.
+ * 
+ * Supported Languages:
+ * - VBScript (.vbs, .vba) - SAP Script Tracker native format
+ * - JavaScript (.js) - SAP Script Tracker native format  
  * - PowerShell (.ps1) - Windows automation via COM
  * - Python (.py) - Automation via win32com/pywin32
  * - AutoIt (.au3) - Automation scripting
  * 
- * This parser is language-agnostic and extracts:
- * - SAP object identifiers (wnd[0]/usr/txtFieldName)
- * - Text properties and values
- * - Actions (setText, press, select, doubleClick, etc.)
- * 
- * And converts them into INGenious test cases and SAP Object Repository entries.
- * 
- * Supported SAP GUI Script Commands (all languages):
- * - session.findById().text = "value"  -> Set action
- * - session.findById().press()         -> Click action
- * - session.findById().selected = true -> Select action
- * - session.findById().setFocus()      -> SetFocus action
- * - session.findById().sendVKey n      -> SendVKey action
- * - session.findById().doubleClick     -> DoubleClick action
- * - session.startTransaction "T-CODE"  -> Transaction action
- * 
- * Language Compatibility:
- * - Comments: ' (VBScript/VBA), // (JavaScript), # (PowerShell/Python), ; (AutoIt)
- * - Variable prefixes: $session (PowerShell/AutoIt), session (others)
- * - Semicolons: Optional, works with or without
- * - Parentheses: Flexible matching for method calls
+ * Architecture:
+ * 1. SapParserFactory selects the appropriate language parser based on file extension
+ * 2. Language-specific parser extracts SAP objects and actions
+ * 3. SapScriptParser generates Object Repository (XML) and Test Cases (CSV)
  */
 public class SapScriptParser {
 
     private static final Logger LOGGER = Logger.getLogger(SapScriptParser.class.getName());
 
     private final AppMainFrame sMainFrame;
-    private Map<String, String> filePath = new HashMap<>();
-    private Map<String, String> testCase = new HashMap<>();
-    private Map<String, SapObject> sapObjects = new LinkedHashMap<>();
-    private List<SapAction> sapActions = new ArrayList<>();
-
-    // Regex patterns for SAP GUI scripting API
-    private static final Pattern FIND_BY_ID_PATTERN = Pattern.compile(
-            "session\\.findById\\(\"([^\"]+)\"\\)", Pattern.CASE_INSENSITIVE);
-    
-    private static final Pattern SET_TEXT_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.(?:text|Text)\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
-    
-    private static final Pattern PRESS_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.press\\(\\)", Pattern.CASE_INSENSITIVE);
-    
-    private static final Pattern SELECT_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.selected\\s*=\\s*(true|false|-?\\d+|\\$true|\\$false)", Pattern.CASE_INSENSITIVE);
-    
-    private static final Pattern SET_FOCUS_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.setFocus\\(\\)", Pattern.CASE_INSENSITIVE);
-    
-    // Matches: sendVKey 0 (VBScript) and sendVKey(0) (JavaScript/PowerShell/Python)
-    // Also handles: $session.findById() (PowerShell/AutoIt)
-    private static final Pattern SEND_VKEY_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.sendVKey\\s*\\(?\\s*(\\d+)\\s*\\)?", Pattern.CASE_INSENSITIVE);
-
-    private static final Pattern DOUBLE_CLICK_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.doubleClick\\(\\)", Pattern.CASE_INSENSITIVE);
-
-    // Matches: startTransaction "TX" (VBScript) and startTransaction("TX") (JavaScript/PowerShell/Python)
-    // Also handles: $session.startTransaction() (PowerShell/AutoIt)
-    private static final Pattern TRANSACTION_PATTERN = Pattern.compile(
-            "\\$?session\\.startTransaction\\s*\\(?\\s*\"([^\"]+)\"\\s*\\)?", Pattern.CASE_INSENSITIVE);
-
-    private static final Pattern CARET_POSITION_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.caretPosition\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
-
-    private static final Pattern MODIFIED_CELL_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.modifyCell\\s*\\(\\s*(\\d+)\\s*,\\s*\"([^\"]+)\"\\s*,\\s*\"([^\"]*)\"\\s*\\)", Pattern.CASE_INSENSITIVE);
-
-    private static final Pattern SET_CURRENT_CELL_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.currentCellRow\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
-
-    // Additional patterns for complete SAPActions coverage
-    private static final Pattern DROPDOWN_KEY_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.Key\\s*=\\s*\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
-    
-    private static final Pattern DROPDOWN_SELECT_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.Select\\s*\\(?\\s*(\\d+)\\s*\\)?", Pattern.CASE_INSENSITIVE);
-    
-    private static final Pattern DOUBLE_CLICK_CURRENT_CELL_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.doubleClickCurrentCell", Pattern.CASE_INSENSITIVE);
-    
-    private static final Pattern TAB_SELECT_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.select\\(\\)", Pattern.CASE_INSENSITIVE);
-    
-    private static final Pattern COMBO_SELECTED_TEXT_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.value\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
-    
-    // Pattern to capture general property assignments (name, tooltip, etc.) - for object metadata only
-    private static final Pattern PROPERTY_ASSIGNMENT_PATTERN = Pattern.compile(
-            "\\$?session\\.findById\\(\"([^\"]+)\"\\)\\.([a-zA-Z_][a-zA-Z0-9_]*)\\s*=\\s*\"([^\"]*)\"", Pattern.CASE_INSENSITIVE);
+    private final Map<String, String> filePath = new HashMap<>();
+    private final Map<String, String> testCase = new HashMap<>();
+    private Map<String, SapLanguageParser.SapObject> sapObjects = new LinkedHashMap<>();
+    private List<SapLanguageParser.SapAction> sapActions = new ArrayList<>();
 
     public SapScriptParser(AppMainFrame sMainFrame) {
         this.sMainFrame = sMainFrame;
@@ -136,20 +62,32 @@ public class SapScriptParser {
         }
         
         String extension = FilenameUtils.getExtension(file.getName()).toLowerCase();
-        if (!extension.matches("vbs|js|ps1|py|au3|vba")) {
-            LOGGER.warning("File extension '" + extension + "' is uncommon for SAP scripts. Supported: .vbs, .js, .ps1, .py, .au3, .vba");
+        if (!SapParserFactory.isSupported(extension)) {
+            LOGGER.warning(String.format("File extension '%s' is uncommon for SAP scripts. Supported: %s", 
+                extension, SapParserFactory.getSupportedExtensions()));
         }
 
         try {
             System.out.println("Starting SAP Script import: " + file.getName());
             initializeFilePaths(file);
-            parseScriptFile(file);
+            
+            // Use factory to get language-specific parser
+            SapLanguageParser languageParser = SapParserFactory.createParser(file);
+            System.out.println("Using " + languageParser.getLanguageName() + " parser");
+            
+            // Parse the script file
+            languageParser.parse(file);
+            
+            // Get parsed objects and actions
+            sapObjects = languageParser.getSapObjects();
+            sapActions = languageParser.getSapActions();
+            
             generateObjectRepository();
             generateTestCase();
             cleanup();
             
             System.out.println("Successfully imported SAP Script: " + file.getName());
-            LOGGER.info("SAP Script parsing completed successfully. Created " + sapActions.size() + " test steps.");
+            LOGGER.info(String.format("SAP Script parsing completed successfully. Created %d test steps.", sapActions.size()));
         } catch (Exception ex) {
             LOGGER.log(Level.SEVERE, "Error parsing SAP Script file", ex);
             System.err.println("Failed to import SAP Script: " + ex.getMessage());
@@ -174,297 +112,6 @@ public class SapScriptParser {
             testScenario.mkdirs();
         }
         testCase.put("pageName", getUniqueName(testScenario, testCase.get("pageName")));
-    }
-
-    private void parseScriptFile(File file) throws IOException {
-        LOGGER.info("Parsing SAP Script file: " + file.getAbsolutePath());
-        
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            String line;
-            int lineNumber = 0;
-            String currentTransaction = null;
-            
-            while ((line = reader.readLine()) != null) {
-                lineNumber++;
-                String trimmedLine = line.trim();
-                
-                // Skip comments and empty lines
-                // VBScript/VBA: ' or REM
-                // JavaScript: // or /* */
-                // PowerShell/Python: #
-                // AutoIt: ;
-                if (trimmedLine.isEmpty() 
-                    || trimmedLine.startsWith("'")      // VBScript/VBA comment
-                    || trimmedLine.startsWith("REM")   // VBScript/VBA comment
-                    || trimmedLine.startsWith("//")    // JavaScript comment
-                    || trimmedLine.startsWith("/*")    // JavaScript block comment
-                    || trimmedLine.startsWith("*")     // JavaScript block comment continuation
-                    || trimmedLine.startsWith("#")     // PowerShell/Python comment
-                    || trimmedLine.startsWith(";")) {  // AutoIt comment
-                    continue;
-                }
-                
-                // Extract transaction
-                Matcher txMatcher = TRANSACTION_PATTERN.matcher(trimmedLine);
-                if (txMatcher.find()) {
-                    currentTransaction = txMatcher.group(1);
-                    LOGGER.fine("Found transaction: " + currentTransaction);
-                    // Add transaction as an action
-                    sapActions.add(new SapAction("Transaction", "SAP_SYSTEM", currentTransaction, lineNumber));
-                    continue;
-                }
-                
-                // Parse different SAP GUI actions
-                parseSapAction(trimmedLine, lineNumber, currentTransaction);
-            }
-        }
-        
-        LOGGER.info(String.format("Parsed %d SAP objects and %d actions", sapObjects.size(), sapActions.size()));
-    }
-
-    private void parseSapAction(String line, int lineNumber, String transaction) {
-        // Try to match setText action
-        Matcher setTextMatcher = SET_TEXT_PATTERN.matcher(line);
-        if (setTextMatcher.find()) {
-            String id = setTextMatcher.group(1);
-            String value = setTextMatcher.group(2);
-            String objType = determineObjectType(id);
-            addSapObject(id, objType, transaction);
-            // Store the text property value in the object
-            addPropertyToSapObject(id, "text", value);
-            sapActions.add(new SapAction("Set", id, value, lineNumber));
-            return;
-        }
-        
-        // Try to match press action
-        Matcher pressMatcher = PRESS_PATTERN.matcher(line);
-        if (pressMatcher.find()) {
-            String id = pressMatcher.group(1);
-            addSapObject(id, "Button", transaction);
-            sapActions.add(new SapAction("Click", id, "", lineNumber));
-            return;
-        }
-        
-        // Try to match dropdown key selection (must be before general select pattern)
-        Matcher dropdownKeyMatcher = DROPDOWN_KEY_PATTERN.matcher(line);
-        if (dropdownKeyMatcher.find()) {
-            String id = dropdownKeyMatcher.group(1);
-            String key = dropdownKeyMatcher.group(2);
-            addSapObject(id, "ComboBox", transaction);
-            sapActions.add(new SapAction("SelectDropDownByKey", id, key, lineNumber));
-            return;
-        }
-        
-        // Try to match dropdown select by index
-        Matcher dropdownSelectMatcher = DROPDOWN_SELECT_PATTERN.matcher(line);
-        if (dropdownSelectMatcher.find()) {
-            String id = dropdownSelectMatcher.group(1);
-            String index = dropdownSelectMatcher.group(2);
-            addSapObject(id, "ComboBox", transaction);
-            sapActions.add(new SapAction("SelectDropDownByIndex", id, index, lineNumber));
-            return;
-        }
-        
-        // Try to match combo selected with text value (e.g., cmb*.selected = "A")
-        Matcher comboTextMatcher = COMBO_SELECTED_TEXT_PATTERN.matcher(line);
-        if (comboTextMatcher.find()) {
-            String id = comboTextMatcher.group(1);
-            String value = comboTextMatcher.group(2);
-            String objType = determineObjectType(id);
-            if (objType.equals("ComboBox")) {
-                addSapObject(id, "ComboBox", transaction);
-                sapActions.add(new SapAction("SelectDropDownByText", id, value, lineNumber));
-                return;
-            }
-        }
-        
-        // Try to match select action (checkbox, radio, tab) - now with type detection
-        Matcher selectMatcher = SELECT_PATTERN.matcher(line);
-        if (selectMatcher.find()) {
-            String id = selectMatcher.group(1);
-            String selected = selectMatcher.group(2);
-            String objType = determineObjectType(id);
-            
-            // Determine action based on object type
-            if (objType.equals("Checkbox")) {
-                addSapObject(id, "Checkbox", transaction);
-                sapActions.add(new SapAction("SelectCheckBox", id, selected, lineNumber));
-            } else if (objType.equals("RadioButton")) {
-                addSapObject(id, "RadioButton", transaction);
-                sapActions.add(new SapAction("SelectRadioButton", id, selected, lineNumber));
-            } else if (objType.equals("Tab")) {
-                addSapObject(id, "Tab", transaction);
-                sapActions.add(new SapAction("SelectTab", id, selected, lineNumber));
-            } else {
-                addSapObject(id, objType, transaction);
-                sapActions.add(new SapAction("Select", id, selected, lineNumber));
-            }
-            return;
-        }
-        
-        // Try to match tab select() method call
-        Matcher tabSelectMatcher = TAB_SELECT_PATTERN.matcher(line);
-        if (tabSelectMatcher.find()) {
-            String id = tabSelectMatcher.group(1);
-            addSapObject(id, "Tab", transaction);
-            sapActions.add(new SapAction("SelectTab", id, "", lineNumber));
-            return;
-        }
-        
-        // Try to match setFocus action
-        Matcher focusMatcher = SET_FOCUS_PATTERN.matcher(line);
-        if (focusMatcher.find()) {
-            String id = focusMatcher.group(1);
-            addSapObject(id, "Element", transaction);
-            sapActions.add(new SapAction("SetFocus", id, "", lineNumber));
-            return;
-        }
-        
-        // Try to match sendVKey action
-        Matcher vkeyMatcher = SEND_VKEY_PATTERN.matcher(line);
-        if (vkeyMatcher.find()) {
-            String id = vkeyMatcher.group(1);
-            String vkey = vkeyMatcher.group(2);
-            addSapObject(id, "Window", transaction);
-            sapActions.add(new SapAction("SendVKey", id, vkey, lineNumber));
-            return;
-        }
-        
-        // Try to match double click on current cell (specific pattern)
-        Matcher doubleClickCellMatcher = DOUBLE_CLICK_CURRENT_CELL_PATTERN.matcher(line);
-        if (doubleClickCellMatcher.find()) {
-            String id = doubleClickCellMatcher.group(1);
-            addSapObject(id, "Table", transaction);
-            sapActions.add(new SapAction("DoubleClickCell", id, "", lineNumber));
-            return;
-        }
-        
-        // Try to match general doubleClick action
-        Matcher doubleClickMatcher = DOUBLE_CLICK_PATTERN.matcher(line);
-        if (doubleClickMatcher.find()) {
-            String id = doubleClickMatcher.group(1);
-            addSapObject(id, "Element", transaction);
-            sapActions.add(new SapAction("DoubleClick", id, "", lineNumber));
-            return;
-        }
-
-        // Try to match modifyCell action (for table operations)
-        Matcher modifyCellMatcher = MODIFIED_CELL_PATTERN.matcher(line);
-        if (modifyCellMatcher.find()) {
-            String id = modifyCellMatcher.group(1);
-            String row = modifyCellMatcher.group(2);
-            String column = modifyCellMatcher.group(3);
-            String value = modifyCellMatcher.group(4);
-            addSapObject(id, "Table", transaction);
-            sapActions.add(new SapAction("ModifyCell", id, row + "," + column + "," + value, lineNumber));
-            return;
-        }
-
-        // Try to match setCurrentCell action
-        Matcher setCurrentCellMatcher = SET_CURRENT_CELL_PATTERN.matcher(line);
-        if (setCurrentCellMatcher.find()) {
-            String id = setCurrentCellMatcher.group(1);
-            String row = setCurrentCellMatcher.group(2);
-            addSapObject(id, "Table", transaction);
-            sapActions.add(new SapAction("SetCurrentCell", id, row, lineNumber));
-            return;
-        }
-        
-        // Generic findById for objects not yet handled
-        Matcher findByIdMatcher = FIND_BY_ID_PATTERN.matcher(line);
-        if (findByIdMatcher.find()) {
-            String id = findByIdMatcher.group(1);
-            addSapObject(id, "Element", transaction);
-        }
-        
-        // Try to capture general property assignments (name, Text, tooltip, etc.) for object metadata
-        // This should be tried after all action patterns to capture properties that don't trigger actions
-        Matcher propertyMatcher = PROPERTY_ASSIGNMENT_PATTERN.matcher(line);
-        if (propertyMatcher.find()) {
-            String id = propertyMatcher.group(1);
-            String propertyName = propertyMatcher.group(2);
-            String propertyValue = propertyMatcher.group(3);
-            
-            // Skip if this is an action property (already handled above)
-            String propLower = propertyName.toLowerCase();
-            if (!propLower.equals("text") && !propLower.equals("selected") && !propLower.equals("key") 
-                && !propLower.equals("value") && !propLower.equals("caretposition") 
-                && !propLower.equals("currentcellrow")) {
-                // This is a metadata property like "name", "Text" (capital T), "tooltip", etc.
-                addPropertyToSapObject(id, propertyName, propertyValue);
-                LOGGER.fine(String.format("Captured property: %s.%s = %s", id, propertyName, propertyValue));
-            }
-        }
-    }
-
-    private void addSapObject(String id, String type, String transaction) {
-        if (!sapObjects.containsKey(id)) {
-            SapObject obj = new SapObject(id, type, transaction);
-            // Extract and store text from ID for use in test case generation (fallback if not provided)
-            obj.text = extractTextFromId(id);
-            sapObjects.put(id, obj);
-            LOGGER.fine(String.format("Added SAP object: id=%s, type=%s, text=%s", id, type, obj.text));
-        }
-    }
-    
-    private void addPropertyToSapObject(String id, String propertyName, String propertyValue) {
-        // Ensure the object exists
-        if (sapObjects.containsKey(id)) {
-            SapObject obj = sapObjects.get(id);
-            obj.setProperty(propertyName, propertyValue);
-        } else {
-            // Create object if it doesn't exist yet
-            SapObject obj = new SapObject(id, determineObjectType(id), null);
-            obj.setProperty(propertyName, propertyValue);
-            sapObjects.put(id, obj);
-        }
-    }
-    
-    /**
-     * Determine object type based on SAP ID prefix for better action mapping.
-     * Maps SAP control prefixes to appropriate object types that align with SAPActions.
-     */
-    private String determineObjectType(String sapId) {
-        // Extract the last segment after the final '/'
-        String lastSegment = sapId;
-        int lastSlash = sapId.lastIndexOf('/');
-        if (lastSlash >= 0) {
-            lastSegment = sapId.substring(lastSlash + 1);
-        }
-        
-        // Determine type based on common SAP GUI control prefixes
-        if (lastSegment.startsWith("txt") || lastSegment.startsWith("ctxt")) {
-            return "TextField";
-        }
-        if (lastSegment.startsWith("pwd")) {
-            return "PasswordField";
-        }
-        if (lastSegment.startsWith("btn")) {
-            return "Button";
-        }
-        if (lastSegment.startsWith("chk")) {
-            return "Checkbox";
-        }
-        if (lastSegment.startsWith("rad")) {
-            return "RadioButton";
-        }
-        if (lastSegment.startsWith("cmb") || lastSegment.startsWith("cbo")) {
-            return "ComboBox";
-        }
-        if (lastSegment.startsWith("tbl")) {
-            return "Table";
-        }
-        if (lastSegment.startsWith("tab")) {
-            return "Tab";
-        }
-        if (lastSegment.startsWith("wnd")) {
-            return "Window";
-        }
-        if (lastSegment.startsWith("usr") || lastSegment.startsWith("sub")) {
-            return "Container"; // Container elements, usually skip
-        }
-        
-        return "Element"; // Default for unknown types
     }
 
     private void generateObjectRepository() throws Exception {
@@ -521,17 +168,17 @@ public class SapScriptParser {
         page.setAttribute("ref", testCase.get("pageName"));
         
         // Group objects by type
-        Map<String, List<SapObject>> groupedObjects = new LinkedHashMap<>();
-        for (SapObject obj : sapObjects.values()) {
+        Map<String, List<SapLanguageParser.SapObject>> groupedObjects = new LinkedHashMap<>();
+        for (SapLanguageParser.SapObject obj : sapObjects.values()) {
             groupedObjects.computeIfAbsent(obj.type, k -> new ArrayList<>()).add(obj);
         }
         
         // Create object groups
-        for (Map.Entry<String, List<SapObject>> entry : groupedObjects.entrySet()) {
+        for (Map.Entry<String, List<SapLanguageParser.SapObject>> entry : groupedObjects.entrySet()) {
             Element objectGroup = doc.createElement("ObjectGroup");
             objectGroup.setAttribute("ref", entry.getKey());
             
-            for (SapObject sapObj : entry.getValue()) {
+            for (SapLanguageParser.SapObject sapObj : entry.getValue()) {
                 Element object = createSapORObject(doc, sapObj, objectGroup);
                 objectGroup.appendChild(object);
             }
@@ -542,7 +189,7 @@ public class SapScriptParser {
         return page;
     }
 
-    private Element createSapORObject(Document doc, SapObject sapObj, Element objectGroup) {
+    private Element createSapORObject(Document doc, SapLanguageParser.SapObject sapObj, Element objectGroup) {
         String objectName = generateObjectName(sapObj.id);
         
         Element object = doc.createElement("Object");
@@ -558,15 +205,11 @@ public class SapScriptParser {
         idProp.setAttribute("pref", String.valueOf(propIndex++));
         object.appendChild(idProp);
         
-        // Add text property if captured from script or extracted from ID
-        String textValue = sapObj.text;
-        if (textValue == null || textValue.isEmpty()) {
-            textValue = extractTextFromId(sapObj.id);
-        }
-        if (textValue != null && !textValue.isEmpty()) {
+        // Add text property ONLY if explicitly captured from script
+        if (sapObj.text != null && !sapObj.text.isEmpty()) {
             Element textProp = doc.createElement("Property");
             textProp.setAttribute("ref", "Text");
-            textProp.setAttribute("value", textValue);
+            textProp.setAttribute("value", sapObj.text);
             textProp.setAttribute("pref", String.valueOf(propIndex++));
             object.appendChild(textProp);
         }
@@ -604,7 +247,7 @@ public class SapScriptParser {
 
             int stepNo = 1;
 
-            for (SapAction action : sapActions) {
+            for (SapLanguageParser.SapAction action : sapActions) {
                 if (action.actionType.equals("Transaction")) {
                     // Transaction action - no object reference needed
                     String stepName = "Execute Transaction " + action.value;
@@ -703,18 +346,6 @@ public class SapScriptParser {
         return name;
     }
 
-    private String extractTextFromId(String id) {
-        // Try to extract meaningful text from SAP ID
-        // Example: wnd[0]/usr/txtRSYST-BNAME -> RSYST-BNAME
-        String[] parts = id.split("/");
-        if (parts.length > 0) {
-            String lastPart = parts[parts.length - 1];
-            // Remove control type prefix
-            return lastPart.replaceAll("^(txt|btn|cbo|chk|tbl|tab|ctxt|cmbBox|rad)", "");
-        }
-        return "";
-    }
-
     private String getUniqueName(File directory, String baseName) {
         String uniqueName = baseName;
         int counter = 1;
@@ -757,53 +388,5 @@ public class SapScriptParser {
         sapActions.clear();
         testCase.clear();
         filePath.clear();
-    }
-
-    // -------- Inner Classes --------
-
-    static class SapObject {
-        String id;
-        String type;
-        String text;
-        String name;
-        String transaction;
-        Map<String, String> additionalProperties;
-
-        SapObject(String id, String type, String transaction) {
-            this.id = id;
-            this.type = type;
-            this.transaction = transaction;
-            this.text = "";
-            this.name = "";
-            this.additionalProperties = new HashMap<>();
-        }
-        
-        void setProperty(String propertyName, String propertyValue) {
-            switch (propertyName.toLowerCase()) {
-                case "text":
-                    this.text = propertyValue;
-                    break;
-                case "name":
-                    this.name = propertyValue;
-                    break;
-                default:
-                    additionalProperties.put(propertyName, propertyValue);
-                    break;
-            }
-        }
-    }
-
-    static class SapAction {
-        String actionType;
-        String objectId;
-        String value;
-        int lineNumber;
-
-        SapAction(String actionType, String objectId, String value, int lineNumber) {
-            this.actionType = actionType;
-            this.objectId = objectId;
-            this.value = value;
-            this.lineNumber = lineNumber;
-        }
     }
 }
