@@ -16,26 +16,26 @@ public class SapParserFactory {
     
     static {
         // Register VBScript parser
-        PARSER_MAP.put("vbs", SapParserLangVBScript.class);
-        PARSER_MAP.put("vba", SapParserLangVBScript.class);
+        // PARSER_MAP.put("vbs", SapParserLangVBScript.class);
+        // PARSER_MAP.put("vba", SapParserLangVBScript.class);
         
         // Register JavaScript parser
-        PARSER_MAP.put("js", SapParserLangJavaScript.class);
+        // PARSER_MAP.put("js", SapParserLangJavaScript.class);
         
         // Register PowerShell parser
         PARSER_MAP.put("ps1", SapParserLangPowerShell.class);
         
         // Register Python parser
-        PARSER_MAP.put("py", SapParserLangPython.class);
+        // PARSER_MAP.put("py", SapParserLangPython.class);
         
         // Register AutoIt parser
-        PARSER_MAP.put("au3", SapParserLangAutoIt.class);
+        // PARSER_MAP.put("au3", SapParserLangAutoIt.class);
         
         // Register C# parser
-        PARSER_MAP.put("cs", SapParserLangCSharp.class);
+        // PARSER_MAP.put("cs", SapParserLangCSharp.class);
         
         // Register VB.NET parser
-        PARSER_MAP.put("vb", SapParserLangVBNet.class);
+        // PARSER_MAP.put("vb", SapParserLangVBNet.class);
         
         // Register Java parser
         PARSER_MAP.put("java", SapParserLangJava.class);

@@ -307,38 +307,38 @@ public class AppActionListener implements ActionListener {
             // Use language-specific file dialog or all languages
             if (language != null) {
                 switch (language) {
-                    case "VBScript":
-                        sapScriptFile = Utils.openDialog("VBScript SAP Files (*.vbs, *.vba)", "vbs", "vba");
-                        break;
-                    case "JavaScript":
-                        sapScriptFile = Utils.openDialog("JavaScript SAP Files (*.js)", "js");
-                        break;
+                    // case "VBScript":
+                    //     sapScriptFile = Utils.openDialog("VBScript SAP Files (*.vbs, *.vba)", "vbs", "vba");
+                    //     break;
+                    // case "JavaScript":
+                    //     sapScriptFile = Utils.openDialog("JavaScript SAP Files (*.js)", "js");
+                    //     break;
                     case "PowerShell":
                         sapScriptFile = Utils.openDialog("PowerShell SAP Files (*.ps1)", "ps1");
                         break;
-                    case "Python":
-                        sapScriptFile = Utils.openDialog("Python SAP Files (*.py)", "py");
-                        break;
-                    case "AutoIt":
-                        sapScriptFile = Utils.openDialog("AutoIt SAP Files (*.au3)", "au3");
-                        break;
-                    case "CSharp":
-                        sapScriptFile = Utils.openDialog("C# SAP Files (*.cs)", "cs");
-                        break;
-                    case "VBNet":
-                        sapScriptFile = Utils.openDialog("VB.NET SAP Files (*.vb)", "vb");
-                        break;
+                    // case "Python":
+                    //     sapScriptFile = Utils.openDialog("Python SAP Files (*.py)", "py");
+                    //     break;
+                    // case "AutoIt":
+                    //     sapScriptFile = Utils.openDialog("AutoIt SAP Files (*.au3)", "au3");
+                    //     break;
+                    // case "CSharp":
+                    //     sapScriptFile = Utils.openDialog("C# SAP Files (*.cs)", "cs");
+                    //     break;
+                    // case "VBNet":
+                    //     sapScriptFile = Utils.openDialog("VB.NET SAP Files (*.vb)", "vb");
+                    //     break;
                     case "Java":
                         sapScriptFile = Utils.openDialog("Java SAP Files (*.java, *.jsh)", "java", "jsh");
                         break;
                     default:
-                        sapScriptFile = Utils.openDialog("SAP GUI Script Files (VBS, JS, PS1, PY, AU3, CS, VB, JAVA)", 
-                            "vbs", "vba", "js", "ps1", "py", "au3", "cs", "vb", "java", "jsh");
+                        sapScriptFile = Utils.openDialog("SAP GUI Script Files (PS1, JAVA)", 
+                            "ps1", "java", "jsh");
                 }
             } else {
-                // All languages
-                sapScriptFile = Utils.openDialog("SAP GUI Script Files (VBS, JS, PS1, PY, AU3, CS, VB, JAVA)", 
-                    "vbs", "vba", "js", "ps1", "py", "au3", "cs", "vb", "java", "jsh");
+                // All languages (only PowerShell and Java supported)
+                sapScriptFile = Utils.openDialog("SAP GUI Script Files (PS1, JAVA)", 
+                    "ps1", "java", "jsh");
             }
             
             System.out.println("DEBUG: Selected file: " + (sapScriptFile != null ? sapScriptFile.getAbsolutePath() : "null"));
