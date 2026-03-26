@@ -270,44 +270,93 @@ public class AppActionListener implements ActionListener {
                  break;
             case "Import SAP Recording":
                 {
-                    try {
-                        System.out.println("DEBUG: Import SAP Recording clicked");
-                        
-                        if (sMainFrame.getProject() == null) {
-                            Notification.show("Please open a project first before importing SAP scripts.");
-                            System.out.println("ERROR: No project loaded");
-                            break;
-                        }
-                        
-                        String projectLocation = sMainFrame.getProject().getLocation();
-                        System.out.println("DEBUG: Project location: " + projectLocation);
-                        
-                        // Support multiple languages that can access SAP GUI Scripting COM API
-                        File sapScriptFile = Utils.openDialog("SAP GUI Script Files (VBS, JS, PS1, PY, AU3, CS, VB, JAVA)", 
-                            "vbs", "vba", "js", "ps1", "py", "au3", "cs", "vb", "java", "jsh");
-                        System.out.println("DEBUG: Selected file: " + (sapScriptFile != null ? sapScriptFile.getAbsolutePath() : "null"));
-                        
-                        if (sapScriptFile != null && sapScriptFile.exists()) {
-                            System.out.println("INFO: Importing SAP Script Tracker file: " + sapScriptFile.getName());
-                            sapScriptParser.parseSapScript(sapScriptFile);
-                            sMainFrame.loadProject(projectLocation);
-                            Notification.show("SAP Script imported successfully and test cases created.");
-                        } else {
-                            System.out.println("DEBUG: File selection cancelled or file does not exist");
-                        }
-                    } catch (Exception ex) {
-                        System.err.println("ERROR: Exception in Import SAP Recording: " + ex.getMessage());
-                        ex.printStackTrace();
-                        Logger.getLogger(AppActionListener.class.getName()).log(Level.SEVERE, 
-                            "Error importing SAP Script Tracker file", ex);
-                        Notification.show("Failed to import SAP Script: " + ex.getMessage());
-                    }
+                    handleSapImport(null); // All languages
                 }
                 break; 
             default:
-                System.out.println("UNHANDLED ACTION: [" + ae.getActionCommand() + "]");
-                sMainFrame.getLoader().showIDontCare();
-
+                // Handle language-specific SAP imports
+                if (ae.getActionCommand().startsWith("Import SAP Recording:")) {
+                    String language = ae.getActionCommand().substring("Import SAP Recording:".length());
+                    handleSapImport(language);
+                } else {
+                    System.out.println("UNHANDLED ACTION: [" + ae.getActionCommand() + "]");
+                    sMainFrame.getLoader().showIDontCare();
+                }
+        }
+    }
+    
+    /**
+     * Handle SAP script import with optional language filter.
+     * @param language Specific language filter (VBScript, JavaScript, etc.) or null for all languages
+     */
+    private void handleSapImport(String language) {
+        try {
+            System.out.println("DEBUG: Import SAP Recording clicked" + (language != null ? " for " + language : ""));
+            
+            if (sMainFrame.getProject() == null) {
+                Notification.show("Please open a project first before importing SAP scripts.");
+                System.out.println("ERROR: No project loaded");
+                return;
+            }
+            
+            String projectLocation = sMainFrame.getProject().getLocation();
+            System.out.println("DEBUG: Project location: " + projectLocation);
+            
+            File sapScriptFile;
+            
+            // Use language-specific file dialog or all languages
+            if (language != null) {
+                switch (language) {
+                    case "VBScript":
+                        sapScriptFile = Utils.openDialog("VBScript SAP Files (*.vbs, *.vba)", "vbs", "vba");
+                        break;
+                    case "JavaScript":
+                        sapScriptFile = Utils.openDialog("JavaScript SAP Files (*.js)", "js");
+                        break;
+                    case "PowerShell":
+                        sapScriptFile = Utils.openDialog("PowerShell SAP Files (*.ps1)", "ps1");
+                        break;
+                    case "Python":
+                        sapScriptFile = Utils.openDialog("Python SAP Files (*.py)", "py");
+                        break;
+                    case "AutoIt":
+                        sapScriptFile = Utils.openDialog("AutoIt SAP Files (*.au3)", "au3");
+                        break;
+                    case "CSharp":
+                        sapScriptFile = Utils.openDialog("C# SAP Files (*.cs)", "cs");
+                        break;
+                    case "VBNet":
+                        sapScriptFile = Utils.openDialog("VB.NET SAP Files (*.vb)", "vb");
+                        break;
+                    case "Java":
+                        sapScriptFile = Utils.openDialog("Java SAP Files (*.java, *.jsh)", "java", "jsh");
+                        break;
+                    default:
+                        sapScriptFile = Utils.openDialog("SAP GUI Script Files (VBS, JS, PS1, PY, AU3, CS, VB, JAVA)", 
+                            "vbs", "vba", "js", "ps1", "py", "au3", "cs", "vb", "java", "jsh");
+                }
+            } else {
+                // All languages
+                sapScriptFile = Utils.openDialog("SAP GUI Script Files (VBS, JS, PS1, PY, AU3, CS, VB, JAVA)", 
+                    "vbs", "vba", "js", "ps1", "py", "au3", "cs", "vb", "java", "jsh");
+            }
+            
+            System.out.println("DEBUG: Selected file: " + (sapScriptFile != null ? sapScriptFile.getAbsolutePath() : "null"));
+            
+            if (sapScriptFile != null && sapScriptFile.exists()) {
+                System.out.println("INFO: Importing SAP Script Tracker file: " + sapScriptFile.getName());
+                sapScriptParser.parseSapScript(sapScriptFile);
+                sMainFrame.loadProject(projectLocation);
+                Notification.show("SAP Script imported successfully and test cases created.");
+            } else {
+                System.out.println("DEBUG: File selection cancelled or file does not exist");
+            }
+        } catch (Exception ex) {
+            System.err.println("ERROR: Exception in Import SAP Recording: " + ex.getMessage());
+            ex.printStackTrace();
+            Logger.getLogger(AppActionListener.class.getName()).log(Level.SEVERE, 
+                "Error importing SAP Script Tracker file", ex);
+            Notification.show("Failed to import SAP Script: " + ex.getMessage());
         }
     }
     

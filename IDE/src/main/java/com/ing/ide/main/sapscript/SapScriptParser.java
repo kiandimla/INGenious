@@ -351,15 +351,44 @@ public class SapScriptParser {
             case "doubleclick":
                 return "sapDoubleClick";
             case "doubleclickcell":
+            case "doubleclickcurrentcell":
                 return "sapDoubleClickCell";
             case "modifycell":
                 return "sapModifyCell";
             case "setcurrentcell":
+            case "currentcellrow":
                 return "sapSetCurrentCellRow";
             case "transaction":
                 return "sapExecuteTransaction";
+            case "presscontextbutton":
+                return "sapPressContextButton";
+            case "selectcontextmenuitem":
+                return "sapSelectContextMenuItem";
+            case "clearselection":
+                return "sapClearSelection";
+            case "resizeworkingpane":
+                return "sapResizeWorkingPane";
+            case "selectedrows":
+                return "sapSetSelectedRows";
+            case "topnode":
+                return "sapSetTopNode";
+            case "firstvisiblecolumn":
+                return "sapSetFirstVisibleColumn";
+            case "caretposition":
+            case "cursorposition":
+                return "sapSetCaretPosition";
+            case "modified":
+                return "sapSetModified";
+            case "check":
+                return "sapSelectCheckBox";
+            case "dropdownkey":
+                return "sapSelectDropDownByKey";
+            // Handle dynamic property setters
             default:
-                return "Interact";
+                if (sapActionType.toLowerCase().startsWith("setproperty_")) {
+                    return "manual_review";
+                }
+                return "manual_review";
         }
     }
 

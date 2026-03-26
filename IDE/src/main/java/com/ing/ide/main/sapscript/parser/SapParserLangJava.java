@@ -176,8 +176,53 @@ public class SapParserLangJava extends SapLanguageParser {
                 addAction("DoubleClick", objectId, "", lineNumber);
                 break;
             
+            case "presscontextbutton":
+                if (parameters != null && !parameters.isEmpty()) {
+                    String value = extractQuotedValue(parameters);
+                    addAction("PressContextButton", objectId, value, lineNumber);
+                } else {
+                    addAction("PressContextButton", objectId, "", lineNumber);
+                }
+                break;
+            
+            case "selectcontextmenuitem":
+                if (parameters != null && !parameters.isEmpty()) {
+                    String value = extractQuotedValue(parameters);
+                    addAction("SelectContextMenuItem", objectId, value, lineNumber);
+                } else {
+                    addAction("SelectContextMenuItem", objectId, "", lineNumber);
+                }
+                break;
+            
+            case "doubleclickcurrentcell":
+                addAction("DoubleClickCurrentCell", objectId, "", lineNumber);
+                break;
+            
+            case "clearselection":
+                addAction("ClearSelection", objectId, "", lineNumber);
+                break;
+            
+            case "resizeworkingpane":
+                if (parameters != null && !parameters.isEmpty()) {
+                    addAction("ResizeWorkingPane", objectId, parameters.trim(), lineNumber);
+                } else {
+                    addAction("ResizeWorkingPane", objectId, "", lineNumber);
+                }
+                break;
+            
             default:
-                LOGGER.fine("Found method call: " + methodName + " on " + objectId);
+                // For unrecognized methods, still create object and action with methodName as actionType
+                LOGGER.fine("Found unrecognized method call: " + methodName + " on " + objectId);
+                String value = "";
+                if (parameters != null && !parameters.isEmpty()) {
+                    value = extractQuotedValue(parameters);
+                    if (value.isEmpty()) {
+                        value = parameters.trim();
+                    }
+                }
+                // Store object and create action with the method name
+                storeObject(objectId, lineNumber);
+                addAction(methodName, objectId, value, lineNumber);
                 break;
         }
     }
@@ -212,8 +257,35 @@ public class SapParserLangJava extends SapLanguageParser {
                 addAction("Modified", objectId, value, lineNumber);
                 break;
             
+            case "selectedrows":
+                value = extractQuotedValue(value);
+                addAction("SelectedRows", objectId, value, lineNumber);
+                break;
+            
+            case "currentcellrow":
+                value = extractQuotedValue(value);
+                addAction("CurrentCellRow", objectId, value, lineNumber);
+                break;
+            
+            case "topnode":
+                value = extractQuotedValue(value);
+                addAction("TopNode", objectId, value, lineNumber);
+                break;
+            
+            case "firstvisiblecolumn":
+                value = extractQuotedValue(value);
+                addAction("FirstVisibleColumn", objectId, value, lineNumber);
+                break;
+            
             default:
-                LOGGER.fine("Found property assignment: " + propertyName + " = " + value + " on " + objectId);
+                // For unrecognized properties, still create object and action
+                LOGGER.fine("Found unrecognized property assignment: " + propertyName + " = " + value + " on " + objectId);
+                value = extractQuotedValue(value);
+                if (value.isEmpty()) {
+                    value = propertyValue.trim();
+                }
+                storeObject(objectId, lineNumber);
+                addAction("SetProperty_" + propertyName, objectId, value, lineNumber);
                 break;
         }
     }

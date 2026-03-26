@@ -9,7 +9,7 @@ import java.util.logging.Logger;
 import com.jacob.activeX.ActiveXComponent;
 /**
  *
- * @author AP01BP
+ * @author Jayant Borude
  */
 public class SAPSessionCreation {
 	protected RunContext runContext;

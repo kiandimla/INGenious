@@ -16,7 +16,7 @@ import org.openqa.selenium.remote.DesiredCapabilities;
 
 /**
  *
- * @author AP01BP
+ * @author Jayant Borude
  */
 public class SAPSessionFactory {
     // work for SAP

@@ -275,4 +275,113 @@ public class SAPActions extends General {
 			Report.updateTestLog(Action, "Failed to double click. Error: " + e.getMessage(), Status.FAILNS);
 		}
 	}
+
+	@Action(object = ObjectType.SAP, desc = "Press context button with parameter [<Data>]", input = InputType.YES)
+	public void sapPressContextButton() {
+		try {
+			if (Data != null && !Data.isEmpty()) {
+				Dispatch.call(SAPElement, "pressContextButton", Data);
+				Report.updateTestLog(Action, "Pressed context button with parameter [" + Data + "]", Status.DONE);
+			} else {
+				Dispatch.call(SAPElement, "pressContextButton");
+				Report.updateTestLog(Action, "Pressed context button on [" + ObjectName + "]", Status.DONE);
+			}
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to press context button. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Select context menu item [<Data>]", input = InputType.YES)
+	public void sapSelectContextMenuItem() {
+		try {
+			Dispatch.call(SAPElement, "selectContextMenuItem", Data);
+			Report.updateTestLog(Action, "Selected context menu item [" + Data + "]", Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to select context menu item. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Clear selection on [<Object>]")
+	public void sapClearSelection() {
+		try {
+			Dispatch.call(SAPElement, "clearSelection");
+			Report.updateTestLog(Action, "Cleared selection on [" + ObjectName + "]", Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to clear selection. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Resize working pane with parameters [<Data>]", input = InputType.YES)
+	public void sapResizeWorkingPane() {
+		try {
+			String[] params = Data.split(",");
+			if (params.length >= 2) {
+				int width = Integer.parseInt(params[0].trim());
+				int height = Integer.parseInt(params[1].trim());
+				boolean fullScreen = params.length > 2 ? Boolean.parseBoolean(params[2].trim()) : false;
+				
+				Variant[] args = new Variant[3];
+				args[0] = new Variant(width);
+				args[1] = new Variant(height);
+				args[2] = new Variant(fullScreen);
+				
+				Dispatch.call(SAPElement, "resizeWorkingPane", (Object[]) args);
+				Report.updateTestLog(Action, "Resized working pane to " + width + "x" + height, Status.DONE);
+			} else {
+				Report.updateTestLog(Action, "Invalid data format. Expected: width,height[,fullScreen]", Status.FAILNS);
+			}
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to resize working pane. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Set selected rows to [<Data>]", input = InputType.YES)
+	public void sapSetSelectedRows() {
+		try {
+			Dispatch.put(SAPElement, "selectedRows", Data);
+			Report.updateTestLog(Action, "Set selected rows to [" + Data + "]", Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to set selected rows. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Set top node to [<Data>]", input = InputType.YES)
+	public void sapSetTopNode() {
+		try {
+			Dispatch.put(SAPElement, "topNode", Data);
+			Report.updateTestLog(Action, "Set top node to [" + Data + "]", Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to set top node. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Set first visible column to [<Data>]", input = InputType.YES)
+	public void sapSetFirstVisibleColumn() {
+		try {
+			Dispatch.put(SAPElement, "firstVisibleColumn", Data);
+			Report.updateTestLog(Action, "Set first visible column to [" + Data + "]", Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to set first visible column. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Set caret position to [<Data>]", input = InputType.YES)
+	public void sapSetCaretPosition() {
+		try {
+			Dispatch.put(SAPElement, "caretPosition", Integer.parseInt(Data));
+			Report.updateTestLog(Action, "Set caret position to " + Data, Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to set caret position. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
+
+	@Action(object = ObjectType.SAP, desc = "Set modified property to [<Data>]", input = InputType.YES)
+	public void sapSetModified() {
+		try {
+			Dispatch.put(SAPElement, "modified", Boolean.parseBoolean(Data));
+			Report.updateTestLog(Action, "Set modified property to " + Data, Status.DONE);
+		} catch (Exception e) {
+			Report.updateTestLog(Action, "Failed to set modified property. Error: " + e.getMessage(), Status.FAILNS);
+		}
+	}
 }
