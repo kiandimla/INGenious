@@ -131,8 +131,16 @@ public class SapOR implements ORRootInf<SapORPage> {
             SapORPage page = new SapORPage(pageName, this);
             page.setSource(isShared() ? ORScope.SHARED : ORScope.PROJECT);
             pages.add(page);
-            new File(page.getRepLocation()).mkdirs();
+            // Only create folder for non-YAML formats
+            if (objectRepository == null || !objectRepository.isUsingYamlFormat()) {
+                new File(page.getRepLocation()).mkdirs();
+            }
             setSaved(false);
+            
+            // Auto-save for YAML format
+            if (objectRepository != null && objectRepository.isUsingYamlFormat()) {
+                objectRepository.saveSapPageNow(page);
+            }
             return page;
         }
         return null;

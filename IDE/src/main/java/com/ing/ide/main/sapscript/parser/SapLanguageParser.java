@@ -180,7 +180,8 @@ public abstract class SapLanguageParser {
             String value = matcher.group(2);
             String objType = determineObjectType(id);
             addSapObject(id, objType, transaction);
-            addPropertyToSapObject(id, "text", value);
+            // Text value should NOT be stored in SAP Object - it goes in test case Input column only
+            // addPropertyToSapObject(id, "text", value); // REMOVED
             sapActions.add(new SapAction("Set", id, value, lineNumber));
             return true;
         }

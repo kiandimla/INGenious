@@ -363,10 +363,10 @@ public class ObjectRepository {
         return sProject.getLocation() + File.separator + "StructuredDataObjectRepository";
     }
     public String getSapORRepLocation() {
-        return sProject.getLocation() + File.separator + "SapObjectRepository";
+        return sProject.getLocation() + File.separator + "ObjectRepository";
     }
     public String getSharedSapORRepLocation() {
-        return "Shared" + File.separator + "SharedSapObjects" + File.separator + "SapObjectRepository";
+        return "Shared" + File.separator + "SharedSapObjects" + File.separator + "ObjectRepository";
     }
     public String getSharedMORRepLocation() {
         return "Shared" + File.separator + "SharedMobileObjects" + File.separator + "MobileObjectRepository";
@@ -1827,6 +1827,28 @@ public class ObjectRepository {
                 yamlWriter.writeStructuredDataPage(page, structuredDataPagesDir);
             } catch (IOException e) {
                 LOG.log(Level.SEVERE, "Failed to save Structured Data page: " + page.getName(), e);
+            }
+        }
+        // XML format doesn't need per-page saves
+    }
+
+    /** 
+     * Save a SAP page immediately.
+     * For YAML format, writes individual page file.
+     * For XML format, this is a no-op as XML saves the entire OR at once.
+     * @param page the page to save
+     */
+    public void saveSapPageNow(SapORPage page) {
+        if (useYamlFormat && yamlWriter != null) {
+            try {
+                File sapORRepLocation = new File(getSapORRepLocation());
+                File sapPagesDir = new File(sapORRepLocation, "SAP/pages");
+                if (!sapPagesDir.exists()) {
+                    sapPagesDir.mkdirs();
+                }
+                yamlWriter.writeSapPage(page, sapPagesDir);
+            } catch (IOException e) {
+                LOG.log(Level.SEVERE, "Failed to save SAP page: " + page.getName(), e);
             }
         }
         // XML format doesn't need per-page saves

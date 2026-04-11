@@ -1,20 +1,15 @@
 package com.ing.ide.main.sapscript;
 
+import com.ing.datalib.or.common.ObjectGroup;
+import com.ing.datalib.or.sap.SapOR;
+import com.ing.datalib.or.sap.SapORObject;
+import com.ing.datalib.or.sap.SapORPage;
 import com.ing.ide.main.mainui.AppMainFrame;
 import com.ing.ide.main.sapscript.parser.SapLanguageParser;
 import com.ing.ide.main.sapscript.parser.SapParserFactory;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerException;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
 import java.io.*;
 import java.util.*;
 import java.util.logging.Level;
@@ -36,7 +31,7 @@ import java.util.logging.Logger;
  * Architecture:
  * 1. SapParserFactory selects the appropriate language parser based on file extension
  * 2. Language-specific parser extracts SAP objects and actions
- * 3. SapScriptParser generates Object Repository (XML) and Test Cases (CSV)
+ * 3. SapScriptParser generates Object Repository (YAML by default) and Test Cases (CSV)
  */
 public class SapScriptParser {
 
@@ -126,10 +121,11 @@ public class SapScriptParser {
             
             generateObjectRepository();
             generateTestCase();
-            cleanup();
             
             System.out.println("Successfully imported SAP Script: " + file.getName());
             LOGGER.info(String.format("SAP Script parsing completed successfully. Created %d test steps.", sapActions.size()));
+            
+            cleanup();
         } catch (IOException ex) {
             String errorMsg = "Cannot read SAP script file: " + file.getName() + 
                 ". Ensure file exists and is readable.";
@@ -158,9 +154,6 @@ public class SapScriptParser {
         testCase.put("fileName", StringUtils.capitalize(baseName));
         testCase.put("pageName", testCase.get("fileName"));
         
-        // SAP Object Repository path
-        filePath.put("sapORFilePath", filePath.get("projectPath") + "/SapOR.object");
-        
         // Test scenario path
         testCase.put("testScenarioName", (filePath.get("projectPath") + "/TestPlan/" + testCase.get("fileName")).replace("\\", "/"));
         File testScenario = new File(testCase.get("testScenarioName"));
@@ -171,115 +164,89 @@ public class SapScriptParser {
     }
 
     private void generateObjectRepository() throws Exception {
-        File sapORFile = new File(filePath.get("sapORFilePath"));
+        // Use ObjectRepository pattern - get or create SapOR, add page, mark as unsaved
+        generateSapORPage();
+    }
+    
+    /**
+     * Generate SAP Object Repository page following the same pattern as WebOR.
+     * Gets the SapOR from the project's ObjectRepository, adds a new page with parsed objects,
+     * and marks it as unsaved. The ObjectRepository will handle persisting to YAML/XML format.
+     */
+    private void generateSapORPage() throws Exception {
+        LOGGER.info("Generating SAP Object Repository page");
         
-        if (!sapORFile.exists()) {
-            createNewSapOR(sapORFile);
-        } else {
-            updateExistingSapOR(sapORFile);
+        // Get SapOR from project's ObjectRepository
+        SapOR sapOR = sMainFrame.getProject().getObjectRepository().getSapOR();
+        if (sapOR == null) {
+            // Create new SapOR if none exists
+            sapOR = new SapOR(sMainFrame.getProject().getName());
+            sapOR.setObjectRepository(sMainFrame.getProject().getObjectRepository());
+            LOGGER.info("Created new SapOR for project");
         }
-    }
-
-    private void createNewSapOR(File sapORFile) throws Exception {
-        LOGGER.info("Creating new SAP Object Repository");
         
-        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-        Document doc = dBuilder.newDocument();
+        // Check if page already exists and get unique name if needed
+        String pageName = testCase.get("pageName");
+        SapORPage existingPage = sapOR.getPageByName(pageName);
+        if (existingPage != null) {
+            // Generate unique page name
+            int counter = 1;
+            String uniqueName;
+            do {
+                uniqueName = pageName + "_" + counter++;
+            } while (sapOR.getPageByName(uniqueName) != null);
+            pageName = uniqueName;
+            testCase.put("pageName", pageName);
+            LOGGER.info("Page name already exists, using unique name: " + pageName);
+        }
         
-        // Root element
-        Element rootElement = doc.createElement("Root");
-        doc.appendChild(rootElement);
-        rootElement.setAttribute("ref", testCase.get("fileName"));
-        rootElement.setAttribute("type", "SapOR");
-        rootElement.setAttribute("scope", "PROJECT");
+        // Create new page using SapOR's addPage method (same pattern as WebOR)
+        SapORPage page = sapOR.addPage(pageName);
+        if (page == null) {
+            throw new Exception("Failed to create SAP OR page: " + pageName);
+        }
         
-        // Create page
-        Element page = createSapORPage(doc);
-        rootElement.appendChild(page);
-        
-        // Save document
-        saveXMLDocument(doc, sapORFile);
-    }
-
-    private void updateExistingSapOR(File sapORFile) throws Exception {
-        LOGGER.info("Updating existing SAP Object Repository");
-        
-        DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
-        DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
-        Document doc = documentBuilder.parse(sapORFile);
-        doc.getDocumentElement().normalize();
-        Element root = doc.getDocumentElement();
-        
-        // Create new page
-        Element page = createSapORPage(doc);
-        root.appendChild(page);
-        
-        // Save document
-        saveXMLDocument(doc, sapORFile);
-    }
-
-    private Element createSapORPage(Document doc) {
-        Element page = doc.createElement("Page");
-        page.setAttribute("ref", testCase.get("pageName"));
-        
-        // Create one ObjectGroup per SAP object (not grouped by type)
+        // Convert parsed objects to SapORObject instances and add to page
         for (SapLanguageParser.SapObject sapObj : sapObjects.values()) {
             String objectName = generateUniqueObjectName(sapObj.id);
             
-            // Create ObjectGroup with the object name as ref
-            Element objectGroup = doc.createElement("ObjectGroup");
-            objectGroup.setAttribute("ref", objectName);
+            // Create ObjectGroup with single object (same pattern as WebOR)
+            ObjectGroup<SapORObject> group = new ObjectGroup<>(objectName, page);
+            SapORObject orObject = new SapORObject(objectName, group);
             
-            // Create Object with the same name as ref
-            Element object = createSapORObject(doc, sapObj, objectName);
-            objectGroup.appendChild(object);
+            // Set property values (id, name) - Text property should NOT be stored in OR
+            // Text values are only used in test case Input column
+            setObjectProperty(orObject, "id", sapObj.id);
+            setObjectProperty(orObject, "name", sapObj.name != null ? sapObj.name : "");
             
-            page.appendChild(objectGroup);
+            group.getObjects().add(orObject);
+            page.getObjectGroups().add(group);
         }
         
-        return page;
+        // Mark SapOR as unsaved - ObjectRepository will save it on next save() call
+        sapOR.setSaved(false);
+        
+        // Save the ObjectRepository (which will write SapOR in YAML or XML based on project settings)
+        sMainFrame.getProject().getObjectRepository().save();
+        
+        // Reload SAP OR trees in UI to show newly created page
+        // Use load() to create fresh tree models from the updated in-memory SapOR
+        if (sMainFrame.isTestDesign()) {
+            sMainFrame.getTestDesign().getObjectRepo().getSapOR().load();
+        }
+        
+        LOGGER.info("SAP OR page created with " + sapObjects.size() + " objects: " + pageName);
+        System.out.println("Created SAP OR page in project format with " + sapObjects.size() + " objects");
     }
-
-    private Element createSapORObject(Document doc, SapLanguageParser.SapObject sapObj, String objectName) {
-        
-        Element object = doc.createElement("Object");
-        object.setAttribute("ref", objectName);
-        object.setAttribute("frame", "");
-        
-        // SAP Object Repository only has 3 properties (from SapOR.OBJECT_PROPS):
-        // 1. id - SAP findById path (always required)
-        // 2. name - Object name (only if not empty)
-        // 3. Text - Text value (only if captured from script)
-        
-        int propIndex = 1;
-        
-        // Property 1: id (SAP findById path) - always required
-        Element idProp = doc.createElement("Property");
-        idProp.setAttribute("ref", "id");
-        idProp.setAttribute("value", sapObj.id);
-        idProp.setAttribute("pref", String.valueOf(propIndex++));
-        object.appendChild(idProp);
-        
-        // Property 2: name (only add if not empty)
-        if (sapObj.name != null && !sapObj.name.isEmpty()) {
-            Element nameProp = doc.createElement("Property");
-            nameProp.setAttribute("ref", "name");
-            nameProp.setAttribute("value", sapObj.name);
-            nameProp.setAttribute("pref", String.valueOf(propIndex++));
-            object.appendChild(nameProp);
-        }
-        
-        // Property 3: Text (only add if captured from script)
-        if (sapObj.text != null && !sapObj.text.isEmpty()) {
-            Element textProp = doc.createElement("Property");
-            textProp.setAttribute("ref", "Text");
-            textProp.setAttribute("value", sapObj.text);
-            textProp.setAttribute("pref", String.valueOf(propIndex++));
-            object.appendChild(textProp);
-        }
-        
-        return object;
+    
+    /**
+     * Helper method to set property value on SapORObject.
+     */
+    private void setObjectProperty(SapORObject object, String propertyName, String value) {
+        object.getAttributes().stream()
+            .filter(attr -> attr.getName().equals(propertyName))
+            .findFirst()
+            .ifPresent(attr -> attr.setValue(value));
     }
 
     private void generateTestCase() throws IOException {
@@ -465,19 +432,6 @@ public class SapScriptParser {
         }
         
         return uniqueName;
-    }
-
-    private void saveXMLDocument(Document doc, File file) throws TransformerException {
-        TransformerFactory transformerFactory = TransformerFactory.newInstance();
-        Transformer transformer = transformerFactory.newTransformer();
-        transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, "yes");
-        transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
-        
-        DOMSource source = new DOMSource(doc);
-        StreamResult result = new StreamResult(file);
-        transformer.transform(source, result);
-        
-        LOGGER.info("SAP OR saved to: " + file.getAbsolutePath());
     }
 
     private String escapeCSV(String value) {

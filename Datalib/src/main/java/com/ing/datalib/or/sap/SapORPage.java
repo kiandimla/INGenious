@@ -121,9 +121,18 @@ public class SapORPage implements ORPageInf<SapORObject, SapOR> {
         if (getObjectGroupByName(groupName) == null) {
             ObjectGroup<SapORObject> group = new ObjectGroup<>(groupName, this);
             objectGroups.add(group);
-            new File(group.getRepLocation()).mkdirs();
+            // Only create folder for non-YAML formats
+            if (root.getObjectRepository() == null || !root.getObjectRepository().isUsingYamlFormat()) {
+                new File(group.getRepLocation()).mkdirs();
+            }
             group.addObject(groupName);
             root.setSaved(false);
+            
+            // Auto-save for YAML format
+            if (root.getObjectRepository() != null 
+                && root.getObjectRepository().isUsingYamlFormat()) {
+                root.getObjectRepository().saveSapPageNow(this);
+            }
             return group;
         }
         return null;

@@ -104,11 +104,8 @@ public class YamlSapPageDefinition {
         for (ObjectGroup<SapORObject> group : page.getObjectGroups()) {
             for (SapORObject object : group.getObjects()) {
                 YamlSapElementDefinition elementDef = YamlSapElementDefinition.fromSapORObject(object);
-                
-                // Only add if it has meaningful properties
-                if (!elementDef.isEmpty()) {
-                    def.elements.put(object.getName(), elementDef);
-                }
+                // Add all objects, even if empty (matches Web OR behavior)
+                def.elements.put(object.getName(), elementDef);
             }
         }
         
