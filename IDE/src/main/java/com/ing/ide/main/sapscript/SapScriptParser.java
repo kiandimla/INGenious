@@ -290,67 +290,169 @@ public class SapScriptParser {
         System.out.println("Created test case with " + sapActions.size() + " steps");
     }
 
+    /**
+     * Map parsed SAP action types to INGenious SAP action method names.
+     * Enhanced to support 64 total actions (29 existing + 35 new).
+     * 
+     * @param sapActionType The action type extracted from SAP script
+     * @return The corresponding INGenious SAPActions method name
+     */
     private String mapToINGeniousAction(String sapActionType) {
         switch (sapActionType.toLowerCase()) {
-            case "set":
-                return "sapFill";
-            case "click":
-            case "press":
-                return "sapClick";
-            case "select":
-                return "sapSelect";
-            case "selectcheckbox":
-                return "sapSelectCheckBox";
-            case "selectradiobutton":
-                return "sapSelectRadioButtonInRow";
-            case "selecttab":
-                return "sapSelect";
-            case "selectdropdownbytext":
-                return "sapSelectDropDownByText";
-            case "selectdropdownbykey":
-                return "sapSelectDropDownByKey";
-            case "selectdropdownbyindex":
-                return "sapSelectDropDownByIndex";
-            case "setfocus":
-                return "sapSetFocus";
-            case "sendvkey":
-                return "sapSimulateKeyPress";
-            case "doubleclick":
-                return "sapDoubleClick";
-            case "doubleclickcell":
-            case "doubleclickcurrentcell":
-                return "sapDoubleClickCell";
-            case "modifycell":
-                return "sapModifyCell";
-            case "setcurrentcell":
-            case "currentcellrow":
-                return "sapSetCurrentCellRow";
+            // ========== SESSION & TRANSACTION MANAGEMENT ==========
             case "transaction":
+            case "starttransaction":
                 return "sapExecuteTransaction";
-            case "presscontextbutton":
-                return "sapPressContextButton";
-            case "selectcontextmenuitem":
-                return "sapSelectContextMenuItem";
-            case "clearselection":
-                return "sapClearSelection";
+            case "endtransaction":
+                return "sapEndTransaction";
+            case "refresh":
+                return "sapRefreshSession";
+            
+            // ========== WINDOW MANAGEMENT ==========
+            case "maximize":
+                return "sapMaximizeWindow";
+            case "minimize":
+                return "sapMinimizeWindow";
+            case "restore":
+                return "sapRestoreWindow";
+            case "close":
+                return "sapCloseWindow";
+            case "iconify":
+                return "sapIconifyWindow";
             case "resizeworkingpane":
                 return "sapResizeWorkingPane";
-            case "selectedrows":
-                return "sapSetSelectedRows";
-            case "topnode":
-                return "sapSetTopNode";
-            case "firstvisiblecolumn":
-                return "sapSetFirstVisibleColumn";
+            
+            // ========== TEXT FIELD ACTIONS ==========
+            case "set":
+                return "sapFill";
+            case "selectall":
+                return "sapSelectAllText";
             case "caretposition":
             case "cursorposition":
                 return "sapSetCaretPosition";
             case "modified":
                 return "sapSetModified";
+            
+            // ========== BUTTON ACTIONS ==========
+            case "click":
+            case "press":
+                return "sapClick";
+            case "pressbutton":
+                return "sapPressButton";
+            
+            // ========== CHECKBOX & RADIO BUTTON ==========
+            case "selectcheckbox":
             case "check":
                 return "sapSelectCheckBox";
+            case "selectradiobutton":
+                return "sapSelectRadioButtonInRow";
+            
+            // ========== COMBOBOX/DROPDOWN ==========
+            case "selectdropdownbytext":
+                return "sapSelectDropDownByText";
+            case "selectdropdownbykey":
             case "dropdownkey":
                 return "sapSelectDropDownByKey";
-            // Handle dynamic property setters
+            case "selectdropdownbyindex":
+                return "sapSelectDropDownByIndex";
+            case "opencombobox":
+                return "sapOpenComboBox";
+            case "closecombobox":
+                return "sapCloseComboBox";
+            
+            // ========== TAB ACTIONS ==========
+            case "select":
+            case "selecttab":
+                return "sapSelect";
+            
+            // ========== TABLE CONTROL ACTIONS ==========
+            case "selectrow":
+                return "sapSelectTableRow";
+            case "setcurrentcell":
+                return "sapSetCurrentCell";
+            case "currentcellrow":
+                return "sapSetCurrentCellRow";
+            case "getcellvalue":
+                return "sapGetCellValue";
+            case "modifycell":
+                return "sapModifyCell";
+            case "clickcurrentcell":
+                return "sapClickCurrentCell";
+            case "doubleclickcell":
+            case "doubleclickcurrentcell":
+                return "sapDoubleClickCell";
+            case "verticalscrollbarposition":
+                return "sapSetVerticalScrollPosition";
+            
+            // ========== GRID/ALV ACTIONS ==========
+            case "gridselectrow":
+                return "sapSelectGridRow";
+            case "gridselectcolumn":
+                return "sapSelectGridColumn";
+            case "gridsetcurrentcell":
+                return "sapSetGridCurrentCell";
+            case "gridgetcellvalue":
+                return "sapGetGridCellValue";
+            case "gridclickcurrentcell":
+                return "sapClickGridCurrentCell";
+            case "presstoolbarbutton":
+                return "sapPressToolbarButton";
+            case "presstoolbarcontextbutton":
+                return "sapPressToolbarContextButton";
+            case "gridselectall":
+                return "sapSelectAllGrid";
+            case "deselectrow":
+                return "sapDeselectRow";
+            case "clearselection":
+                return "sapClearSelection";
+            case "setfilter":
+                return "sapSetGridFilter";
+            case "clearfilter":
+                return "sapClearGridFilter";
+            case "selectedrows":
+                return "sapSetSelectedRows";
+            case "currentcellcolumn":
+                return "sapSetCurrentCellColumn";
+            case "firstvisiblecolumn":
+                return "sapSetFirstVisibleColumn";
+            case "firstvisiblerow":
+                return "sapSetFirstVisibleRow";
+            
+            // ========== MENU & TOOLBAR ==========
+            case "menuselect":
+                return "sapSelectMenuItem";
+            
+            // ========== CONTEXT MENU ==========
+            case "presscontextbutton":
+                return "sapPressContextButton";
+            case "selectcontextmenuitem":
+                return "sapSelectContextMenuItem";
+            
+            // ========== TREE CONTROL ==========
+            case "expandnode":
+                return "sapExpandTreeNode";
+            case "collapsenode":
+                return "sapCollapseTreeNode";
+            case "selectnode":
+                return "sapSelectTreeNode";
+            case "doubleclicknode":
+                return "sapDoubleClickTreeNode";
+            case "topnode":
+                return "sapSetTopNode";
+            
+            // ========== STATUS BAR ==========
+            case "getstatusbartext":
+                return "sapGetStatusBarText";
+            
+            // ========== GENERAL ELEMENT ACTIONS ==========
+            case "setfocus":
+                return "sapSetFocus";
+            case "doubleclick":
+                return "sapDoubleClick";
+            case "sendvkey":
+                return "sapSimulateKeyPress";
+            
+            // ========== DYNAMIC PROPERTY SETTERS ==========
             default:
                 if (sapActionType.toLowerCase().startsWith("setproperty_")) {
                     return "manual_review";
