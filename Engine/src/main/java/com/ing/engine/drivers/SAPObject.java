@@ -59,8 +59,12 @@ public class SAPObject {
 		findType=condition;
 		String id=getRuntimeValue(getObjectProperty(pageKey, objectKey, ObjectProperty.Id));	
 		String text = getRuntimeValue(getObjectProperty(pageKey, objectKey, ObjectProperty.Text));				
+		if (id == null) {
+			System.out.println("Error: Element ID is null for object [" + objectKey + "] on page [" + pageKey + "]");
+			return null;
+		}
 		Dispatch parentElement= session.invoke("FindById", id).toDispatch();		
-		if(text.isEmpty())
+		if(text == null || text.isEmpty())
 		{
                  return parentElement;
 		}
@@ -130,6 +134,9 @@ public class SAPObject {
 	}
 
 	private String getRuntimeValue(String value) {
+		if (value == null) {
+			return null;
+		}
 		if (findType != null && findType.equals(FindType.GLOBAL_OBJECT)) {
 			for (String Key : globalDynamicValue.keySet()) {
 				value = value.replace(Key, globalDynamicValue.get(Key));

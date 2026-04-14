@@ -292,7 +292,7 @@ public class SapScriptParser {
 
     /**
      * Map parsed SAP action types to INGenious SAP action method names.
-     * Enhanced to support 64 total actions (29 existing + 35 new).
+     * Enhanced to support 64 total actions (17 existing + 47 new).
      * 
      * @param sapActionType The action type extracted from SAP script
      * @return The corresponding INGenious SAPActions method name
