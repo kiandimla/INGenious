@@ -911,24 +911,83 @@ public abstract class ObjectTree implements ActionListener {
             Notification.show("Objects already in Shared Repository");
             return;
         }
-        if (getSelectedObject() != null) {
-            moveObjectToShared(getSelectedObject());
-            return;
+
+        ORPageInf page = (obj != null) ? obj.getPage()
+                : (group != null) ? group.getParent()
+                : selectedPage;
+
+        ObjectRepository repo = getProject().getObjectRepository();
+
+        ORRootInf root = getOR();
+        boolean isWeb = (root instanceof com.ing.datalib.or.web.WebOR);
+        boolean isMobile = (root instanceof com.ing.datalib.or.mobile.MobileOR);
+        boolean isSap = (root instanceof com.ing.datalib.or.sap.SapOR);
+
+        if (obj == null && group == null && selectedPage != null) {
+            if (isWeb) {
+                String newName = repo.copyWebPage(page.getName(), page.getName());
+                if (newName != null) {
+                    com.ing.ide.util.Notification.show("Copied Page '" + page.getName() + "' to Shared Web Object successfully as '" + newName + "'.");
+                } else {
+                    com.ing.ide.util.Notification.show("Copy failed. Could not copy Page '" + page.getName() + "' to Shared Web Objects.");
+                }
+                if (newName != null) {
+                    if (this instanceof com.ing.ide.main.mainui.components.testdesign.or.web.WebObjectTree) {
+                        com.ing.ide.main.mainui.components.testdesign.or.web.WebORPanel panel =
+                            ((com.ing.ide.main.mainui.components.testdesign.or.web.WebObjectTree) this).getORPanel();
+                        panel.getSharedTree().load();
+                    } else {
+                        reload();
+                    }
+                }
+                return;
+            } else if (isMobile) {
+                String newName = repo.copyMobilePage(page.getName(), page.getName());
+                if (newName != null) {
+                    com.ing.ide.util.Notification.show("Copied Page '" + page.getName() + "' to Shared Mobile Object successfully as '" + newName + "'.");
+                } else {
+                    com.ing.ide.util.Notification.show("Copy failed. Could not copy Page '" + page.getName() + "' to Shared Mobile Objects.");
+                }
+                if (newName != null) {
+                    if (this instanceof com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileObjectTree) {
+                        com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileORPanel panel =
+                            ((com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileObjectTree) this).getORPanel();
+                        panel.getSharedTree().load();
+                    } else {
+                        reload();
+                    }
+                }
+                return;
+            } else if (isSap) {
+                String newName = repo.copySapPage(page.getName(), page.getName());
+                if (newName != null) {
+                    com.ing.ide.util.Notification.show("Copied Page '" + page.getName() + "' to Shared SAP Object successfully as '" + newName + "'.");
+                } else {
+                    com.ing.ide.util.Notification.show("Copy failed. Could not copy Page '" + page.getName() + "' to Shared SAP Objects.");
+                }
+                if (newName != null) {
+                    if (this instanceof com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree) {
+                        com.ing.ide.main.mainui.components.testdesign.or.sap.SapORPanel panel =
+                            ((com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree) this).getORPanel();
+                        panel.getSharedTree().load();
+                    } else {
+                        reload();
+                    }
+                }
+                return;
+            }
         }
         if (getSelectedPage() != null) {
             movePageToShared(getSelectedPage());
         }
     }
 
-    private void moveObjectToShared(ORObjectInf obj) {
-        ObjectRepository repo = getProject().getObjectRepository();
-        ORPageInf page = obj.getPage();
-        ORRootInf root = getOR();
-        boolean isWeb = root instanceof WebOR;
-        boolean isMobile = root instanceof MobileOR;
-        String objectName = obj.getName().toString();
-        String pageName = page.getName();
-        
+        String objectName = (obj != null) ? obj.getName() : (group != null ? group.getName() : null);
+        if (objectName == null) {
+            com.ing.ide.util.Notification.show("Unable to determine object name.");
+            return;
+        }
+
         if (isWeb) {
             ResolvedWebObject resolved =
                 repo.resolveWebObject(
@@ -985,6 +1044,35 @@ public abstract class ObjectTree implements ActionListener {
                 refreshSharedTree();
                 Notification.show("Moved Mobile Object '" + newName + "' to Shared OR");
                 promptTestCaseReload();
+            }
+        } else if (isSap) {
+            com.ing.datalib.or.sap.ResolvedSapObject sresolved =
+                repo.resolveSapObject(
+                    new com.ing.datalib.or.sap.ResolvedSapObject.PageRef(
+                        page.getName(),
+                        com.ing.datalib.or.sap.SapOR.ORScope.PROJECT
+                    ),
+                    objectName
+                );
+            if (sresolved == null) {
+                com.ing.ide.util.Notification.show("Object '" + objectName + "' not found in Project SAP OR (Page '" + page.getName() + "').");
+                return;
+            }
+
+            String copiedName = repo.copySapObject(sresolved, page.getName());
+            if (copiedName != null) {
+                com.ing.ide.util.Notification.show("Copied Object '" + copiedName + "' from Page '" + page.getName() + "' to Shared SAP Object successfully.");
+            } else {
+                com.ing.ide.util.Notification.show("Copy failed. Could not copy Object '" + objectName + "' to Shared SAP Object (Page '" + page.getName() + "').");
+            }
+            if (copiedName != null) {
+                if (this instanceof com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree) {
+                    com.ing.ide.main.mainui.components.testdesign.or.sap.SapORPanel panel =
+                        ((com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree) this).getORPanel();
+                    panel.getSharedTree().load();
+                } else {
+                    reload();
+                }
             }
         }
     }

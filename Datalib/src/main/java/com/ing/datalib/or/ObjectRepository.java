@@ -363,10 +363,10 @@ public class ObjectRepository {
         return sProject.getLocation() + File.separator + "StructuredDataObjectRepository";
     }
     public String getSapORRepLocation() {
-        return sProject.getLocation() + File.separator + "ObjectRepository";
+        return sProject.getLocation() + File.separator + "SapObjectRepository";
     }
     public String getSharedSapORRepLocation() {
-        return "Shared" + File.separator + "SharedSapObjects" + File.separator + "ObjectRepository";
+        return "Shared" + File.separator + "SharedSapObjects" + File.separator + "SapObjectRepository";
     }
     public String getSharedMORRepLocation() {
         return "Shared" + File.separator + "SharedMobileObjects" + File.separator + "MobileObjectRepository";
@@ -1707,6 +1707,88 @@ public class ObjectRepository {
         if (originalGroup.getObjects() != null && !originalGroup.getObjects().isEmpty()) {
             MobileORObject sourceObj = originalGroup.getObjects().get(0);
             MobileORObject cloned = new MobileORObject();
+            cloned.setName(newGroupName);
+            cloned.setParent(newGroup);
+            sourceObj.clone(cloned);
+            newGroup.getObjects().add(cloned);
+        }
+        return newGroup;
+    }
+
+    /**
+     * Copies a project SapOR page into the shared SAP OR using a unique name.
+     * @param sourcePageName project page to copy from
+     * @param targetPageName desired shared page name (will uniquify if needed)
+     * @return actual created page name in shared OR, or null on failure
+     */
+    public String copySapPage(String sourcePageName, String targetPageName) {
+        SapOR projectSapOR = getSapOR();
+        SapOR sharedSapOR  = getSapSharedOR();
+        if (projectSapOR == null || sharedSapOR == null) return null;
+        SapORPage sourcePage = projectSapOR.getPageByName(sourcePageName);
+        if (sourcePage == null) return null;
+        String uniqueTargetName = generateUniquePageName(sharedSapOR, targetPageName);
+        SapORPage targetPage = getOrCreateSapPage(sharedSapOR, uniqueTargetName);
+        copyAllSapGroups(sourcePage, targetPage);
+        sharedSapOR.setSaved(false);
+        LOG.info(() -> "Copied SAP Page '" + sourcePageName
+                + "' to SHARED page '" + uniqueTargetName + "' successfully.");
+        return uniqueTargetName;
+    }
+
+    /**
+     * Copies a SapOR object into a target shared SAP page (creates page if needed)
+     * using a unique object group name.
+     * @param source resolved sap object (from project OR)
+     * @param targetPageName target page name in shared SAP OR
+     * @return new object name created in shared OR, or null on failure
+     */
+    public String copySapObject(ResolvedSapObject source, String targetPageName) {
+        if (source == null) return null;
+        SapOR sharedSapOR = getSapSharedOR();
+        if (sharedSapOR == null) return null;
+        SapORPage targetPage = getOrCreateSapPage(sharedSapOR, targetPageName);
+        if (targetPage == null) return null;
+        ObjectGroup<SapORObject> originalGroup = source.getGroup();
+        if (originalGroup == null) return null;
+        String baseName   = originalGroup.getName();
+        String uniqueName = generateUniqueSapGroupName(targetPage, baseName);
+        ObjectGroup<SapORObject> newGroup = cloneSapGroupIntoPage(originalGroup, targetPage, uniqueName);
+        targetPage.getObjectGroups().add(newGroup);
+        sharedSapOR.setSaved(false);
+        LOG.info(() -> "Copied SAP Object '" + baseName + "' to SHARED as '" + uniqueName + "'");
+        return uniqueName;
+    }
+
+    private String generateUniquePageName(SapOR sapor, String baseName) {
+        if (sapor == null) return baseName;
+        return generateUniqueName(baseName, name -> sapor.getPageByName(name) != null);
+    }
+
+    private String generateUniqueSapGroupName(SapORPage page, String baseName) {
+        if (page == null) return baseName;
+        return generateUniqueName(baseName, name -> page.getObjectGroupByName(name) != null);
+    }
+
+    private SapORPage getOrCreateSapPage(SapOR sapor, String pageName) {
+        if (sapor == null || pageName == null) return null;
+        SapORPage page = sapor.getPageByName(pageName);
+        return (page != null) ? page : sapor.addPage(pageName);
+    }
+
+    private void copyAllSapGroups(SapORPage sourcePage, SapORPage targetPage) {
+        if (sourcePage == null || targetPage == null) return;
+        for (ObjectGroup<SapORObject> originalGroup : sourcePage.getObjectGroups()) {
+            if (originalGroup == null) continue;
+            targetPage.getObjectGroups().add(cloneSapGroupIntoPage(originalGroup, targetPage, originalGroup.getName()));
+        }
+    }
+
+    private ObjectGroup<SapORObject> cloneSapGroupIntoPage(ObjectGroup<SapORObject> originalGroup, SapORPage targetPage, String newGroupName) {
+        ObjectGroup<SapORObject> newGroup = new ObjectGroup<>(newGroupName, targetPage);
+        if (originalGroup.getObjects() != null && !originalGroup.getObjects().isEmpty()) {
+            SapORObject sourceObj = originalGroup.getObjects().get(0);
+            SapORObject cloned = new SapORObject();
             cloned.setName(newGroupName);
             cloned.setParent(newGroup);
             sourceObj.clone(cloned);
