@@ -207,7 +207,7 @@ public class SapOR implements ORRootInf<SapORPage> {
 
     @JsonIgnore
     @Override
-    public Enumeration children() {
+    public Enumeration<SapORPage> children() {
         return Collections.enumeration(pages);
     }
 

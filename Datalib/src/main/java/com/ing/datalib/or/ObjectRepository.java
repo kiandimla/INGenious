@@ -194,14 +194,14 @@ public class ObjectRepository {
                 LOG.info("Loading SAP OR in YAML format...");
                 sapProjectOR = yamlReader.readSapOR(orRepLocation);
                 sapProjectOR.setName(sProject.getName());
-                LOG.info("SAP OR loaded: " + sapProjectOR.getPages().size() + " pages");
+                LOG.log(Level.INFO, "SAP OR loaded: {0} pages", sapProjectOR.getPages().size());
             } else if (!useYamlFormat && new File(getSapORLocation()).exists()) {
-                LOG.info("Loading SAP OR in XML format from: " + getSapORLocation());
+                LOG.log(Level.INFO, "Loading SAP OR in XML format from: {0}", getSapORLocation());
                 sapProjectOR = XML_MAPPER.readValue(new File(getSapORLocation()), SapOR.class);
                 sapProjectOR.setName(sProject.getName());
                 // Ensure parent references are properly set after deserialization
                 if (sapProjectOR.getPages() != null && !sapProjectOR.getPages().isEmpty()) {
-                    LOG.info("Setting parent references for " + sapProjectOR.getPages().size() + " SAP pages");
+                    LOG.log(Level.INFO, "Setting parent references for {0} SAP pages", sapProjectOR.getPages().size());
                     sapProjectOR.setPages(sapProjectOR.getPages());
                     
                     // Log page details for debugging
@@ -213,7 +213,8 @@ public class ObjectRepository {
                                 objectCount += group.getObjects() != null ? group.getObjects().size() : 0;
                             }
                         }
-                        LOG.info("  - Page: " + page.getName() + " with " + groupCount + " groups and " + objectCount + " objects");
+                        LOG.log(Level.INFO, "  - Page: {0} with {1} groups and {2} objects", 
+                            new Object[]{page.getName(), groupCount, objectCount});
                     }
                 }
             } else {

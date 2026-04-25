@@ -45,7 +45,7 @@ public class SapORObject extends UndoRedoModel implements ORObjectInf {
         setDefaultORAttributes();
     }
 
-    public SapORObject(String name, ObjectGroup group) {
+    public SapORObject(String name, ObjectGroup<SapORObject> group) {
         this.name = name;
         this.group = group;
         setDefaultORAttributes();
@@ -139,12 +139,14 @@ public class SapORObject extends UndoRedoModel implements ORObjectInf {
 
     @JsonIgnore
     @Override
+    @SuppressWarnings("rawtypes")
     public Enumeration children() {
         return null;
     }
 
     @JsonIgnore
     @Override
+    @SuppressWarnings("unchecked")
     public void setParent(ObjectGroup group) {
         this.group = group;
     }

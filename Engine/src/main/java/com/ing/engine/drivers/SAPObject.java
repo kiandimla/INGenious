@@ -1,6 +1,5 @@
 package com.ing.engine.drivers;
 
-import com.ing.engine.drivers.AutomationObject.FindType;
 import com.ing.engine.drivers.SAPObject.SAPFindType;
 import com.jacob.activeX.ActiveXComponent;
 import com.jacob.com.Dispatch;
@@ -17,7 +16,6 @@ import java.util.Map;
 import com.ing.engine.constants.ObjectProperty;
 public class SAPObject {
 	
-	private static final boolean String = false;
 	ActiveXComponent session;
 	String pageName;
 	String objectName;
@@ -137,7 +135,7 @@ public class SAPObject {
 		if (value == null) {
 			return null;
 		}
-		if (findType != null && findType.equals(FindType.GLOBAL_OBJECT)) {
+		if (findType != null && findType.equals(SAPFindType.GLOBAL_OBJECT)) {
 			for (String Key : globalDynamicValue.keySet()) {
 				value = value.replace(Key, globalDynamicValue.get(Key));
 			}
