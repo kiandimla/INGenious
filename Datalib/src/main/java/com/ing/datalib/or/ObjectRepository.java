@@ -1,5 +1,30 @@
 package com.ing.datalib.or;
 
+import com.ing.datalib.component.Project;
+import com.ing.datalib.component.TestStep;
+import com.ing.datalib.or.structureddata.StructuredData;
+import com.ing.datalib.or.common.ORPageInf;
+import com.ing.datalib.or.common.ObjectGroup;
+import com.ing.datalib.or.mobile.MobileOR;
+import com.ing.datalib.or.mobile.MobileORObject;
+import com.ing.datalib.or.mobile.MobileORPage;
+import com.ing.datalib.or.web.WebOR;
+import com.ing.datalib.or.yaml.YamlORReader;
+import com.ing.datalib.or.yaml.YamlORWriter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
+import com.ing.datalib.or.structureddata.StructuredDataORObject;
+import com.ing.datalib.or.structureddata.StructuredDataORPage;
+import com.ing.datalib.or.structureddata.ResolvedStructuredDataObject;
+import com.ing.datalib.or.mobile.ResolvedMobileObject;
+import com.ing.datalib.or.web.ResolvedWebObject;
+import com.ing.datalib.or.web.WebOR.ORScope;
+import static com.ing.datalib.or.web.WebOR.ORScope.PROJECT;
+import static com.ing.datalib.or.web.WebOR.ORScope.SHARED;
+import com.ing.datalib.or.web.WebORObject;
+import com.ing.datalib.or.web.WebORPage;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -87,22 +112,15 @@ public class ObjectRepository {
         try {
             yamlReader = new YamlORReader(this);
             yamlWriter = new YamlORWriter();
-            
-            File orRepLocation = new File(getORRepLocation());
-            
-            // Determine format once for PROJECT ORs only
-            // Check if YAML or XML files exist for project ORs
-            boolean hasYamlFiles = yamlReader.webORExists(orRepLocation) 
-                                || yamlReader.mobileORExists(orRepLocation)
-                                || yamlReader.structuredDataORExists(orRepLocation)
-                                || yamlReader.sapORExists(orRepLocation);
-            boolean hasXmlFiles = new File(getORLocation()).exists() 
-                               || new File(getMORLocation()).exists() 
-                               || new File(getStructuredDataORLocation()).exists()
-                               || new File(getSapORLocation()).exists();
-            
-            // Set format once for entire project
-            if (hasYamlFiles) {
+
+            boolean projectYamlExists = hasYamlOR();
+            boolean sharedYamlExists  = hasSharedYamlOR();
+            boolean xmlExists = hasAnyXmlOR();
+
+            if (xmlExists) {
+                loadXmlObjectRepositories();
+                convertXmlOrsToYamlAndArchive();
+                loadYamlObjectRepositories();
                 useYamlFormat = true;
             }
             
@@ -111,135 +129,11 @@ public class ObjectRepository {
                 useYamlFormat = true;
             }
             
-            // === SHARED ORs (always XML) ===
-            File sharedFile = new File(getSharedORLocation());
-            if (sharedFile.exists()) {
-                webSharedOR = XML_MAPPER.readValue(sharedFile, WebOR.class);
-                webSharedOR.setName("Shared Web Objects");
-            } else {
-                webSharedOR = new WebOR("Shared Web Objects");
-            }
-            
-            File sharedmorFile = new File(getSharedMORLocation());
-            if (sharedmorFile.exists()) {
-                mobileSharedOR = XML_MAPPER.readValue(sharedmorFile, MobileOR.class);
-                mobileSharedOR.setName("Shared Mobile Objects");
-            } else {
-                mobileSharedOR = new MobileOR("Shared Mobile Objects");
-            }
-            
-            File sharedSapFile = new File(getSharedSapORLocation());
-            if (sharedSapFile.exists()) {
-                sapSharedOR = XML_MAPPER.readValue(sharedSapFile, SapOR.class);
-                sapSharedOR.setName("Shared SAP Objects");
-                // Ensure parent references are properly set after deserialization
-                if (sapSharedOR.getPages() != null && !sapSharedOR.getPages().isEmpty()) {
-                    sapSharedOR.setPages(sapSharedOR.getPages());
-                }
-            } else {
-                sapSharedOR = new SapOR("Shared SAP Objects");
-            }
-            
-            // === PROJECT ORs (YAML or XML based on detection) ===
-            // Load Web Project OR
-            if (useYamlFormat && yamlReader.webORExists(orRepLocation)) {
-                webProjectOR = yamlReader.readWebOR(orRepLocation);
-                webProjectOR.setName(sProject.getName());
-            } else if (!useYamlFormat && new File(getORLocation()).exists()) {
-                webProjectOR = XML_MAPPER.readValue(new File(getORLocation()), WebOR.class);
-                webProjectOR.setName(sProject.getName());
-            } else {
-                webProjectOR = new WebOR(sProject.getName());
-            }
-            // Set ObjectRepository reference immediately to prevent directory creation
-            if (webProjectOR != null) {
+            else {
+                webProjectOR = new WebOR();
+                webProjectOR.setScope(WebOR.ORScope.PROJECT);
                 webProjectOR.setObjectRepository(this);
-                webProjectOR.setScope(ORScope.PROJECT);
-            }
-            
-            // Load Mobile Project OR
-            if (useYamlFormat && yamlReader.mobileORExists(orRepLocation)) {
-                mobileProjectOR = yamlReader.readMobileOR(orRepLocation);
-                mobileProjectOR.setName(sProject.getName());
-            } else if (!useYamlFormat && new File(getMORLocation()).exists()) {
-                mobileProjectOR = XML_MAPPER.readValue(new File(getMORLocation()), MobileOR.class);
-                mobileProjectOR.setName(sProject.getName());
-            } else {
-                mobileProjectOR = new MobileOR(sProject.getName());
-            }
-            // Set ObjectRepository reference immediately
-            if (mobileProjectOR != null) {
-                mobileProjectOR.setObjectRepository(this);
-                mobileProjectOR.setScope(MobileOR.ORScope.PROJECT);
-            }
-            
-            // Load Structured Data Project OR
-            if (useYamlFormat && yamlReader.structuredDataORExists(orRepLocation)) {
-                structuredDataProjectOR = yamlReader.readStructuredDataOR(orRepLocation);
-                structuredDataProjectOR.setName(sProject.getName());
-            } else if (!useYamlFormat && new File(getStructuredDataORLocation()).exists()) {
-                structuredDataProjectOR = XML_MAPPER.readValue(new File(getStructuredDataORLocation()), StructuredData.class);
-                structuredDataProjectOR.setName(sProject.getName());
-            } else {
-                structuredDataProjectOR = new StructuredData(sProject.getName());
-            }
-
-            // Set ObjectRepository reference immediately
-            if (structuredDataProjectOR != null) {
-                structuredDataProjectOR.setObjectRepository(this);
-            }
-            
-            // Load SAP Project OR (YAML or XML based on detection)
-            if (useYamlFormat && yamlReader.sapORExists(orRepLocation)) {
-                LOG.info("Loading SAP OR in YAML format...");
-                sapProjectOR = yamlReader.readSapOR(orRepLocation);
-                sapProjectOR.setName(sProject.getName());
-                LOG.log(Level.INFO, "SAP OR loaded: {0} pages", sapProjectOR.getPages().size());
-            } else if (!useYamlFormat && new File(getSapORLocation()).exists()) {
-                LOG.log(Level.INFO, "Loading SAP OR in XML format from: {0}", getSapORLocation());
-                sapProjectOR = XML_MAPPER.readValue(new File(getSapORLocation()), SapOR.class);
-                sapProjectOR.setName(sProject.getName());
-                // Ensure parent references are properly set after deserialization
-                if (sapProjectOR.getPages() != null && !sapProjectOR.getPages().isEmpty()) {
-                    LOG.log(Level.INFO, "Setting parent references for {0} SAP pages", sapProjectOR.getPages().size());
-                    sapProjectOR.setPages(sapProjectOR.getPages());
-                    
-                    // Log page details for debugging
-                    for (SapORPage page : sapProjectOR.getPages()) {
-                        int groupCount = page.getObjectGroups() != null ? page.getObjectGroups().size() : 0;
-                        int objectCount = 0;
-                        if (page.getObjectGroups() != null) {
-                            for (ObjectGroup<SapORObject> group : page.getObjectGroups()) {
-                                objectCount += group.getObjects() != null ? group.getObjects().size() : 0;
-                            }
-                        }
-                        LOG.log(Level.INFO, "  - Page: {0} with {1} groups and {2} objects", 
-                            new Object[]{page.getName(), groupCount, objectCount});
-                    }
-                }
-            } else {
-                LOG.info("No existing SAP OR found, creating new empty SAP OR");
-                sapProjectOR = new SapOR(sProject.getName());
-            }
-            if (sapProjectOR != null) {
-                sapProjectOR.setObjectRepository(this);
-            }
-
-            // Set remaining properties for shared and project ORs
-            if (webSharedOR != null) {
-                webSharedOR.setObjectRepository(this);
-                webSharedOR.setSaved(true);
-                webSharedOR.setRepLocationOverride(getSharedORRepLocation());
-                webSharedOR.setScope(ORScope.SHARED);
-            }
-            if (webProjectOR != null) {
-                webProjectOR.setSaved(true);
-            }
-            if (mobileSharedOR != null) {
-                mobileSharedOR.setObjectRepository(this);
-                mobileSharedOR.setSaved(true);
-                mobileSharedOR.setRepLocationOverride(getSharedMORRepLocation());
-                mobileSharedOR.setScope(MobileOR.ORScope.SHARED);
+                webProjectOR.setName(sProject.getName());
                 
                 mobileProjectOR = new MobileOR();
                 mobileProjectOR.setScope(MobileOR.ORScope.PROJECT);
@@ -248,62 +142,6 @@ public class ObjectRepository {
                 
                 structuredDataProjectOR = new StructuredData();
                 structuredDataProjectOR.setObjectRepository(this);
-                structuredDataProjectOR.setSaved(true);
-            }
-            if (sapSharedOR != null) {
-                sapSharedOR.setObjectRepository(this);
-                sapSharedOR.setSaved(true);
-                sapSharedOR.setRepLocationOverride(getSharedSapORRepLocation());
-                sapSharedOR.setScope(SapOR.ORScope.SHARED);
-            }
-            if (sapProjectOR != null) {
-                sapProjectOR.setSaved(true);
-                sapProjectOR.setScope(SapOR.ORScope.PROJECT);
-            }
-
-            LOG.log(Level.INFO, "Shared WebOR loaded: {0}", (webSharedOR != null));
-            LOG.log(Level.INFO, "Project WebOR loaded: {0}", (webProjectOR != null));
-            LOG.log(Level.INFO, "Shared MobileOR loaded: {0}", (mobileSharedOR != null));
-            LOG.log(Level.INFO, "Project MobileOR loaded: {0}", (mobileProjectOR != null));
-            
-            // Try YAML format first (modern format)
-            if (yamlReader.webORExists(orRepLocation)) {
-                LOG.info("Loading Web OR from YAML format");
-                webProjectOR = yamlReader.readWebOR(orRepLocation);
-                webProjectOR.setName(sProject.getName());
-                useYamlFormat = true;
-            } else if (new File(getORLocation()).exists()) {
-                // Fall back to XML format (legacy)
-                LOG.info("Loading Web OR from XML format");
-                webProjectOR = XML_MAPPER.readValue(new File(getORLocation()), WebOR.class);
-                webProjectOR.setName(sProject.getName());
-                useYamlFormat = false; // Use XML format for legacy projects
-            } else {
-                webProjectOR = new WebOR(sProject.getName());
-                // useYamlFormat stays true for new projects
-            }
-            
-            // Try YAML format first for Mobile OR
-            if (yamlReader.mobileORExists(orRepLocation)) {
-                LOG.info("Loading Mobile OR from YAML format");
-                mobileProjectOR = yamlReader.readMobileOR(orRepLocation);
-                mobileProjectOR.setName(sProject.getName());
-                useYamlFormat = true;
-            } else if (new File(getMORLocation()).exists()) {
-                // Fall back to XML format (legacy)
-                LOG.info("Loading Mobile OR from XML format");
-                mobileProjectOR = XML_MAPPER.readValue(new File(getMORLocation()), MobileOR.class);
-                mobileProjectOR.setName(sProject.getName());
-                useYamlFormat = false; // Use XML format for legacy projects
-            } else {
-                mobileProjectOR = new MobileOR(sProject.getName());
-                // useYamlFormat stays true for new projects
-            }
-
-            // Try YAML format first for Structured Data OR
-            if (yamlReader.structuredDataORExists(orRepLocation)) {
-                LOG.info("Loading Structured Data OR from YAML format");
-                structuredDataProjectOR = yamlReader.readStructuredDataOR(orRepLocation);
                 structuredDataProjectOR.setName(sProject.getName());
                 useYamlFormat = true;
                 
@@ -320,16 +158,8 @@ public class ObjectRepository {
                     mobileSharedOR.setSaved(true);
                 }
             }
-
-            webProjectOR.setObjectRepository(this);
-            webProjectOR.setSaved(true);
-            mobileProjectOR.setObjectRepository(this);
-            structuredDataProjectOR.setObjectRepository(this);
-        
-            LOG.log(Level.INFO, "Shared SapOR loaded: {0}", (sapSharedOR != null));
-            LOG.log(Level.INFO, "Project SapOR loaded: {0}", (sapProjectOR != null));
-        } catch (IOException ex) {
-            Logger.getLogger(ObjectRepository.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (IOException e) {
+            LOG.log(Level.SEVERE, "Failed to initialize ObjectRepository", e);
         }
     }
 
@@ -345,11 +175,8 @@ public class ObjectRepository {
     public String getStructuredDataORLocation() {
         return sProject.getLocation() + File.separator + "StructuredDataOR.object";
     }
-    public String getSapORLocation() {
-        return sProject.getLocation() + File.separator + "SapOR.object";
-    }
-    public String getSharedSapORLocation() {
-        return "Shared" + File.separator + "SharedSapObjects" + File.separator + "SharedSapOR.object";
+    public String getSharedORLocation() {
+        return "Shared" + File.separator + "SharedWebObjects" + File.separator + "SharedOR.object";
     }
     public String getSharedMORLocation() {
         return "Shared" + File.separator + "SharedMobileObjects" + File.separator + "SharedMOR.object";
@@ -363,14 +190,12 @@ public class ObjectRepository {
     public String getStructuredDataORRepLocation() {
         return sProject.getLocation() + File.separator + "StructuredDataObjectRepository";
     }
-    public String getSapORRepLocation() {
-        return sProject.getLocation() + File.separator + "SapObjectRepository";
-    }
-    public String getSharedSapORRepLocation() {
-        return "Shared" + File.separator + "SharedSapObjects" + File.separator + "SapObjectRepository";
-    }
-    public String getSharedMORRepLocation() {
-        return "Shared" + File.separator + "SharedMobileObjects" + File.separator + "MobileObjectRepository";
+    public String getSharedORRepLocation() {
+        File projectDir = new File(sProject.getLocation());   
+        File projectsRoot = projectDir.getParentFile();       
+        File ingeniousRoot = projectsRoot.getParentFile();    
+        File sharedOR = new File(ingeniousRoot,"Shared" + File.separator + "SharedObjectRepository");
+        return sharedOR.getAbsolutePath();
     }
     public Project getsProject() {
         return sProject;
@@ -439,45 +264,7 @@ public class ObjectRepository {
                     );
                 }
             }
-            
-            java.util.List<String> sapExisting = (sapSharedOR != null) ? sapSharedOR.getProjects() : java.util.List.of();
-            java.util.LinkedHashSet<String> sapMerged = new java.util.LinkedHashSet<>();
-            if (sapExisting != null) sapMerged.addAll(sapExisting);
-            sapMerged.addAll(sharedUsageProjects);
-            boolean sapProjectsChanged = false;
-            if (sapSharedOR != null) {
-                java.util.ArrayList<String> sapList = new java.util.ArrayList<>(sapMerged);
-                java.util.List<String> sapCurrent = sapSharedOR.getProjects();
-                sapProjectsChanged = (sapCurrent == null) || !new java.util.LinkedHashSet<>(sapCurrent).equals(sapMerged);
-                if (sapProjectsChanged) {
-                    sapSharedOR.setProjects(sapList);
-                }
-            }
-            
-            // === SHARED ORs (always XML) ===
-            if (webSharedOR != null && (!webSharedOR.isSaved() || projectsChanged)) {
-                File sharedORFile = new File(getSharedORLocation());
-                sharedORFile.getParentFile().mkdirs();
-                XML_MAPPER.writerWithDefaultPrettyPrinter()
-                    .writeValue(sharedORFile, webSharedOR);
-                webSharedOR.setSaved(true);
-            }
-            if (mobileSharedOR != null && (!mobileSharedOR.isSaved() || mProjectsChanged)) {
-                File sharedMORFile = new File(getSharedMORLocation());
-                sharedMORFile.getParentFile().mkdirs();
-                XML_MAPPER.writerWithDefaultPrettyPrinter()
-                        .writeValue(sharedMORFile, mobileSharedOR);
-                mobileSharedOR.setSaved(true);
-            }
-            if (sapSharedOR != null && (!sapSharedOR.isSaved() || sapProjectsChanged)) {
-                File sharedSapORFile = new File(getSharedSapORLocation());
-                sharedSapORFile.getParentFile().mkdirs();
-                XML_MAPPER.writerWithDefaultPrettyPrinter()
-                        .writeValue(sharedSapORFile, sapSharedOR);
-                sapSharedOR.setSaved(true);
-            }
-            
-            // === PROJECT ORs (YAML or XML based on format) ===
+
             if (useYamlFormat) {
                 File sharedRoot = new File(getSharedORRepLocation());
                 if (webSharedOR != null && (!webSharedOR.isSaved() || webProjectsChanged)) {
@@ -497,43 +284,8 @@ public class ObjectRepository {
                     }
                     mobileSharedOR.setSaved(true);
                 }
-                if (sapProjectOR != null && !sapProjectOR.isSaved()) {
-                    File saporRepLocation = new File(getSapORRepLocation());
-                    yamlWriter.writeSapOR(sapProjectOR, saporRepLocation);
-                    sapProjectOR.setSaved(true);
-                }
+                saveAsYaml();
                 LOG.info("Saved project ORs in YAML format");
-            } else {
-                // Save in XML format (legacy)
-                if (webProjectOR != null && !webProjectOR.isSaved()) {
-                    File orFile = new File(getORLocation());
-                    orFile.getParentFile().mkdirs();
-                    XML_MAPPER.writerWithDefaultPrettyPrinter()
-                        .writeValue(orFile, webProjectOR);
-                    webProjectOR.setSaved(true);
-                }
-                if (mobileProjectOR != null && !mobileProjectOR.isSaved()) {
-                    File morFile = new File(getMORLocation());
-                    morFile.getParentFile().mkdirs();
-                    XML_MAPPER.writerWithDefaultPrettyPrinter()
-                            .writeValue(morFile, mobileProjectOR);
-                    mobileProjectOR.setSaved(true);
-                }
-                if (structuredDataProjectOR != null && !structuredDataProjectOR.isSaved()) {
-                    File structuredDataORFile = new File(getStructuredDataORLocation());
-                    structuredDataORFile.getParentFile().mkdirs();
-                    XML_MAPPER.writerWithDefaultPrettyPrinter()
-                            .writeValue(structuredDataORFile, structuredDataProjectOR);
-                    structuredDataProjectOR.setSaved(true);
-                }
-                if (sapProjectOR != null && !sapProjectOR.isSaved()) {
-                    File sapORFile = new File(getSapORLocation());
-                    sapORFile.getParentFile().mkdirs();
-                    XML_MAPPER.writerWithDefaultPrettyPrinter()
-                            .writeValue(sapORFile, sapProjectOR);
-                    sapProjectOR.setSaved(true);
-                }
-                LOG.info("Saved project ORs in XML format");
             }
         } catch (IOException ex) {
             Logger.getLogger(ObjectRepository.class.getName())
@@ -1432,14 +1184,6 @@ public class ObjectRepository {
         return uniqueName;
     }
     
-    /**
-     * Moves a WebOR object from project to shared page.
-     * Actually moves the object (removes from source, adds to target) instead of cloning.
-     *
-     * @param source          resolved web object
-     * @param targetPageName  target page in shared OR
-     * @return original object name if successful, null if object already exists in target
-     */
     public String moveWebObject(ResolvedWebObject source, String targetPageName) {
         if (source == null) return null;
         WebOR sharedOR = getWebSharedOR();
@@ -1449,13 +1193,9 @@ public class ObjectRepository {
         ObjectGroup<WebORObject> originalGroup = source.getGroup();
         if (originalGroup == null) return null;
         String originalName = originalGroup.getName();
-        
-        // Fail if object with same name already exists in target
         if (targetPage.getObjectGroupByName(originalName) != null) {
             return null;
         }
-        
-        // Remove from source page first (actual move!)
         ORPageInf sourcePage = originalGroup.getParent();
         if (sourcePage != null) {
             sourcePage.getObjectGroups().remove(originalGroup);
@@ -1464,28 +1204,12 @@ public class ObjectRepository {
                 saveWebPageNow((WebORPage) sourcePage);
             }
         }
-        
-        // Move the same group to target (not a clone)
         originalGroup.setParent(targetPage);
         targetPage.getObjectGroups().add(originalGroup);
         sharedOR.setSaved(false);
         if (useYamlFormat) {
             saveWebPageNow(targetPage);
         }
-        
-        // Update all test case references from PROJECT to SHARED scope
-        // Change page reference from unprefixed or "[Project] page" to "[Shared] page"
-        if (sourcePage != null) {
-            String sourcePageName = sourcePage.getName();
-            String targetScopedPage = "[Shared] " + targetPage.getName();
-            
-            // Update unprefixed references: "PageName" -> "[Shared] PageName"
-            sProject.refactorObjectName(sourcePageName, originalName, targetScopedPage, originalName);
-            
-            // Update [Project] prefixed references: "[Project] PageName" -> "[Shared] PageName"
-            sProject.refactorObjectName("[Project] " + sourcePageName, originalName, targetScopedPage, originalName);
-        }
-        
         LOG.info(
             "Moved Web Object '" + originalName +
             "' to SHARED page '" + targetPageName + "'"
@@ -1551,13 +1275,6 @@ public class ObjectRepository {
         return uniqueName;
     }
     
-    /**
-     * Moves a MobileOR object from project to shared page.
-     * Actually moves the object (removes from source, adds to target) instead of cloning.
-     * @param source resolved mobile object (from project OR)
-     * @param targetPageName target page name in shared Mobile OR
-     * @return original object name if successful, null if object already exists in target
-     */
     public String moveMobileObject(ResolvedMobileObject source, String targetPageName) {
         if (source == null) return null;
         MobileOR sharedOR = getMobileSharedOR();
@@ -1567,43 +1284,24 @@ public class ObjectRepository {
         ObjectGroup<MobileORObject> originalGroup = source.getGroup();
         if (originalGroup == null) return null;
         String originalName = originalGroup.getName();
-        
-        // Fail if object with same name already exists in target
         if (targetPage.getObjectGroupByName(originalName) != null) {
             return null;
         }
-        
-        // Remove from source page first (actual move!)
         ORPageInf sourcePage = originalGroup.getParent();
         if (sourcePage != null) {
             sourcePage.getObjectGroups().remove(originalGroup);
             sourcePage.getRoot().setSaved(false);
+
             if (useYamlFormat && sourcePage instanceof MobileORPage) {
                 saveMobilePageNow((MobileORPage) sourcePage);
             }
         }
-        
-        // Move the same group to target (not a clone)
         originalGroup.setParent(targetPage);
         targetPage.getObjectGroups().add(originalGroup);
         sharedOR.setSaved(false);
         if (useYamlFormat) {
             saveMobilePageNow(targetPage);
         }
-        
-        // Update all test case references from PROJECT to SHARED scope
-        // Change page reference from unprefixed or "[Project] page" to "[Shared] page"
-        if (sourcePage != null) {
-            String sourcePageName = sourcePage.getName();
-            String targetScopedPage = "[Shared] " + targetPage.getName();
-            
-            // Update unprefixed references: "PageName" -> "[Shared] PageName"
-            sProject.refactorObjectName(sourcePageName, originalName, targetScopedPage, originalName);
-            
-            // Update [Project] prefixed references: "[Project] PageName" -> "[Shared] PageName"
-            sProject.refactorObjectName("[Project] " + sourcePageName, originalName, targetScopedPage, originalName);
-        }
-        
         LOG.info(
             "Moved Mobile Object Group '" + originalName +
             "' to SHARED page '" + targetPageName + "'"
@@ -2012,7 +1710,7 @@ public class ObjectRepository {
         }
     }
     
-    public boolean deleteWebPageYaml(String pageName, WebOR.ORScope scope) {
+    public boolean deleteWebPageYaml(String pageName) {
         if (!useYamlFormat || yamlWriter == null) {
             return true; // XML mode - no-op
         }
@@ -2020,9 +1718,7 @@ public class ObjectRepository {
             return true;
         }
         try {
-            File orRepLocation = (scope == WebOR.ORScope.SHARED) 
-                ? new File(getSharedORRepLocation()) 
-                : new File(getORRepLocation());
+            File orRepLocation = new File(getORRepLocation());
             return yamlWriter.deleteWebPage(pageName, orRepLocation);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to delete Web page YAML: " + pageName, e);
@@ -2030,7 +1726,7 @@ public class ObjectRepository {
         }
     }
     
-    public boolean deleteMobilePageYaml(String pageName, MobileOR.ORScope scope) {
+    public boolean deleteMobilePageYaml(String pageName) {
         if (!useYamlFormat || yamlWriter == null) {
             return true; // XML mode - no-op
         }
@@ -2038,9 +1734,7 @@ public class ObjectRepository {
             return true;
         }
         try {
-            File morRepLocation = (scope == MobileOR.ORScope.SHARED) 
-                ? new File(getSharedORRepLocation()) 
-                : new File(getORRepLocation());
+            File morRepLocation = new File(getORRepLocation());
             return yamlWriter.deleteMobilePage(pageName, morRepLocation);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to delete Mobile page YAML: " + pageName, e);

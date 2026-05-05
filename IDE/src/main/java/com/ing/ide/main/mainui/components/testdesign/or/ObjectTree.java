@@ -39,7 +39,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import com.ing.ide.main.mainui.AppMainFrame;
-import com.ing.ide.main.mainui.components.testdesign.TestDesign;
 import com.ing.ide.main.mainui.components.testdesign.or.clipboard.ORClipboardManager;
 import com.ing.ide.main.mainui.components.testdesign.or.clipboard.ORObjectClipboard;
 import com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileORPanel;
@@ -503,12 +502,6 @@ public abstract class ObjectTree implements ActionListener {
         boolean webDeletionPerformed = false;
         boolean mobileDeletionPerformed = false;
         try {
-            if (isSharedScope()) {
-                Notification.show(
-                    "Remove Unused Objects is only supported for Project Object Repository"
-                );
-                return;
-            }
             List<ORPageInf> selectedPages = getSelectedPages();
             if (selectedPages == null || selectedPages.isEmpty()) {
                 return;
@@ -528,109 +521,108 @@ public abstract class ObjectTree implements ActionListener {
                         if (ref == null || ref.isBlank()) {
                             continue;
                         }
-                        if (ref.startsWith("[Shared]")) {
-                            continue;
-                        }
                         String pageName = normalizePageRef(ref);
-                        String objectGroupName = step.getObject();
-                        if (!pageName.isBlank() && !objectGroupName.isBlank()) {
-                            usedProjectObjects.add(
-                                pageName + "@" + objectGroupName
-                            );
+                        String objectName = step.getObject();
+                        if (!pageName.isBlank() && !objectName.isBlank()) {
+                            usedProjectObjects.add(pageName + "@" + objectName);
                         }
                     }
                 }
             }
-            if (projectWebOR != null) {
-                for (ORPageInf selectedPage : selectedPages) {
-                    String pageName = selectedPage.getName();
-                    WebORPage webPage = projectWebOR.getPageByName(pageName);
-                    if (webPage == null) {
-                        continue;
+            for (ORPageInf selectedPage : selectedPages) {
+                String pageName = selectedPage.getName();
+                WebORPage webPage = projectWebOR.getPageByName(pageName);
+                if (webPage == null) {
+                    continue;
+                }
+                List<String> unusedWebObjects = new ArrayList<>();
+                for (ObjectGroup group : webPage.getObjectGroups()) {
+                    if (!usedProjectObjects.contains(pageName + "@" + group.getName())) {
+                        unusedWebObjects.add(group.getName());
                     }
-                    List<String> unusedWebObjects = new ArrayList<>();
-                    for (ObjectGroup<WebORObject> group : webPage.getObjectGroups()) {
-                        if (!usedProjectObjects.contains(
-                                pageName + "@" + group.getName())) {
-                            unusedWebObjects.add(group.getName());
-                        }
-                    }
-                    if (!unusedWebObjects.isEmpty()) {
-                        int option = JOptionPane.showConfirmDialog(
-                            null,
-                            "<html><body><p style='width: 260px;'>"
-                            + "Delete the following Web objects from page [ "
-                            + pageName + " ]?<br>"
-                            + unusedWebObjects
-                            + "</p></body></html>",
-                            "Delete Web Objects",
-                            JOptionPane.YES_NO_OPTION
-                        );
-
-                        if (option == JOptionPane.YES_OPTION) {
-                            Iterator<ObjectGroup<WebORObject>> it =
-                                webPage.getObjectGroups().iterator();
-
-                            while (it.hasNext()) {
-                                ObjectGroup<WebORObject> group = it.next();
-                                if (unusedWebObjects.contains(group.getName())) {
-                                    it.remove();
-                                    projectWebOR.setSaved(false);
-                                    webDeletionPerformed = true;
-                                }
+                }
+                if (!unusedWebObjects.isEmpty()) {
+                    int option = JOptionPane.showConfirmDialog(
+                        null,
+                        "<html><body><p style='width: 260px;'>"
+                        + "Delete the following Web objects from page [ "
+                        + pageName + " ]?<br>"
+                        + unusedWebObjects
+                        + "</p></body></html>",
+                        "Delete Web Objects",
+                        JOptionPane.YES_NO_OPTION
+                    );
+                    if (option == JOptionPane.YES_OPTION) {
+                        Iterator<ObjectGroup<WebORObject>> it = webPage.getObjectGroups().iterator();
+                        while (it.hasNext()) {
+                            ObjectGroup group = it.next();
+                            if (unusedWebObjects.contains(group.getName())) {
+                                it.remove();
+                                projectWebOR.setSaved(false);
+                                webDeletionPerformed = true;
                             }
                             if (webDeletionPerformed) {
                                 repo.saveWebPageNow(webPage);
                             }
                         }
+                        if (webDeletionPerformed) {
+                            repo.saveWebPageNow(webPage);
+                        }
                     }
                 }
             }
-            if (projectMobileOR != null) {
-                for (ORPageInf selectedPage : selectedPages) {
-                    String pageName = selectedPage.getName();
-                    MobileORPage mobilePage = projectMobileOR.getPageByName(pageName);
-                    if (mobilePage == null) {
-                        continue;
+            for (ORPageInf selectedPage : selectedPages) {
+                String pageName = selectedPage.getName();
+                MobileORPage mobilePage = projectMobileOR.getPageByName(pageName);
+                if (mobilePage == null) {
+                    continue;
+                }
+                List<String> unusedMobileObjects = new ArrayList<>();
+                for (ObjectGroup group : mobilePage.getObjectGroups()) {
+                    if (!usedProjectObjects.contains(pageName + "@" + group.getName())) {
+                        unusedMobileObjects.add(group.getName());
                     }
-                    List<String> unusedMobileObjects = new ArrayList<>();
-                    for (ObjectGroup<MobileORObject> group : mobilePage.getObjectGroups()) {
-                        if (!usedProjectObjects.contains(
-                                pageName + "@" + group.getName())) {
-                            unusedMobileObjects.add(group.getName());
+                }
+                if (!unusedMobileObjects.isEmpty()) {
+                    int option = JOptionPane.showConfirmDialog(
+                        null,
+                        "<html><body><p style='width: 260px;'>"
+                        + "Delete the following Mobile objects from page [ "
+                        + pageName + " ]?<br>"
+                        + unusedMobileObjects
+                        + "</p></body></html>",
+                        "Delete Mobile Objects",
+                        JOptionPane.YES_NO_OPTION
+                    );
+                    if (option == JOptionPane.YES_OPTION) {
+                        Iterator<ObjectGroup<MobileORObject>> it = mobilePage.getObjectGroups().iterator();
+                        while (it.hasNext()) {
+                            ObjectGroup group = it.next();
+                            if (unusedMobileObjects.contains(group.getName())) {
+                                it.remove();
+                                projectMobileOR.setSaved(false);
+                                mobileDeletionPerformed = true;
+                            }
                         }
-                    }
-                    if (!unusedMobileObjects.isEmpty()) {
-                        int option = JOptionPane.showConfirmDialog(
-                            null,
-                            "<html><body><p style='width: 260px;'>"
-                            + "Delete the following Mobile objects from page [ "
-                            + pageName + " ]?<br>"
-                            + unusedMobileObjects
-                            + "</p></body></html>",
-                            "Delete Mobile Objects",
-                            JOptionPane.YES_NO_OPTION
-                        );
-                        if (option == JOptionPane.YES_OPTION) {
-                            Iterator<ObjectGroup<MobileORObject>> it =
-                                mobilePage.getObjectGroups().iterator();
-                            while (it.hasNext()) {
-                                ObjectGroup<MobileORObject> group = it.next();
-                                if (unusedMobileObjects.contains(group.getName())) {
-                                    it.remove();
-                                    projectMobileOR.setSaved(false);
-                                    mobileDeletionPerformed = true;
-                                }
-                            }
-                            if (mobileDeletionPerformed) {
-                                repo.saveMobilePageNow(mobilePage);
-                            }
+                        if (mobileDeletionPerformed) {
+                            repo.saveMobilePageNow(mobilePage);
                         }
                     }
                 }
             }
             if (webDeletionPerformed || mobileDeletionPerformed) {
                 repo.save();
+                int option = JOptionPane.showConfirmDialog(
+                    null,
+                    "<html><body><p style='width: 260px;'>"
+                    + "Do you want to restart INGenious to load the updated Object Repository?"
+                    + "</p></body></html>",
+                    "Restart INGenious",
+                    JOptionPane.YES_NO_OPTION
+                );
+                if (option == JOptionPane.YES_OPTION) {
+                    new AppMainFrame().restart();
+                }
             } else {
                 JOptionPane.showMessageDialog(
                     null,
@@ -641,9 +633,8 @@ public abstract class ObjectTree implements ActionListener {
                     JOptionPane.INFORMATION_MESSAGE
                 );
             }
-            load();
-            reload();
-            tree.repaint();
+            ((DefaultTreeModel) tree.getModel()).reload();
+            tree.updateUI();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -911,88 +902,27 @@ public abstract class ObjectTree implements ActionListener {
             Notification.show("Objects already in Shared Repository");
             return;
         }
-
-        ORPageInf page = (obj != null) ? obj.getPage()
-                : (group != null) ? group.getParent()
-                : selectedPage;
-
-        ObjectRepository repo = getProject().getObjectRepository();
-
-        ORRootInf root = getOR();
-        boolean isWeb = (root instanceof com.ing.datalib.or.web.WebOR);
-        boolean isMobile = (root instanceof com.ing.datalib.or.mobile.MobileOR);
-        boolean isSap = (root instanceof com.ing.datalib.or.sap.SapOR);
-
-        if (obj == null && group == null && selectedPage != null) {
-            if (isWeb) {
-                String newName = repo.copyWebPage(page.getName(), page.getName());
-                if (newName != null) {
-                    com.ing.ide.util.Notification.show("Copied Page '" + page.getName() + "' to Shared Web Object successfully as '" + newName + "'.");
-                } else {
-                    com.ing.ide.util.Notification.show("Copy failed. Could not copy Page '" + page.getName() + "' to Shared Web Objects.");
-                }
-                if (newName != null) {
-                    if (this instanceof com.ing.ide.main.mainui.components.testdesign.or.web.WebObjectTree) {
-                        com.ing.ide.main.mainui.components.testdesign.or.web.WebORPanel panel =
-                            ((com.ing.ide.main.mainui.components.testdesign.or.web.WebObjectTree) this).getORPanel();
-                        panel.getSharedTree().load();
-                    } else {
-                        reload();
-                    }
-                }
-                return;
-            } else if (isMobile) {
-                String newName = repo.copyMobilePage(page.getName(), page.getName());
-                if (newName != null) {
-                    com.ing.ide.util.Notification.show("Copied Page '" + page.getName() + "' to Shared Mobile Object successfully as '" + newName + "'.");
-                } else {
-                    com.ing.ide.util.Notification.show("Copy failed. Could not copy Page '" + page.getName() + "' to Shared Mobile Objects.");
-                }
-                if (newName != null) {
-                    if (this instanceof com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileObjectTree) {
-                        com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileORPanel panel =
-                            ((com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileObjectTree) this).getORPanel();
-                        panel.getSharedTree().load();
-                    } else {
-                        reload();
-                    }
-                }
-                return;
-            } else if (isSap) {
-                String newName = repo.copySapPage(page.getName(), page.getName());
-                if (newName != null) {
-                    com.ing.ide.util.Notification.show("Copied Page '" + page.getName() + "' to Shared SAP Object successfully as '" + newName + "'.");
-                } else {
-                    com.ing.ide.util.Notification.show("Copy failed. Could not copy Page '" + page.getName() + "' to Shared SAP Objects.");
-                }
-                if (newName != null) {
-                    if (this instanceof com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree) {
-                        com.ing.ide.main.mainui.components.testdesign.or.sap.SapORPanel panel =
-                            ((com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree) this).getORPanel();
-                        panel.getSharedTree().load();
-                    } else {
-                        reload();
-                    }
-                }
-                return;
-            }
+        if (getSelectedObject() != null) {
+            moveObjectToShared(getSelectedObject());
+            return;
         }
         if (getSelectedPage() != null) {
             movePageToShared(getSelectedPage());
         }
     }
 
-        String objectName = (obj != null) ? obj.getName() : (group != null ? group.getName() : null);
-        if (objectName == null) {
-            com.ing.ide.util.Notification.show("Unable to determine object name.");
-            return;
-        }
-
+    private void moveObjectToShared(ORObjectInf obj) {
+        ObjectRepository repo = getProject().getObjectRepository();
+        ORPageInf page = obj.getPage();
+        ORRootInf root = getOR();
+        boolean isWeb = root instanceof WebOR;
+        boolean isMobile = root instanceof MobileOR;
+        String objectName = obj.getName().toString();
         if (isWeb) {
             ResolvedWebObject resolved =
                 repo.resolveWebObject(
                     new ResolvedWebObject.PageRef(
-                        pageName,
+                        page.getName(),
                         WebOR.ORScope.PROJECT
                     ),
                     objectName
@@ -1001,27 +931,20 @@ public abstract class ObjectTree implements ActionListener {
                 Notification.show("Object not found in Project OR");
                 return;
             }
-            String newName = repo.moveWebObject(resolved, pageName);
+            String newName = repo.moveWebObject(resolved, page.getName());
             if (newName != null) {
-                // Check if source page is now empty and remove it
-                WebOR projectOR = repo.getWebOR();
-                WebORPage sourcePage = projectOR.getPageByName(pageName);
-                if (sourcePage != null && sourcePage.getObjectGroups().isEmpty()) {
-                    sourcePage.removeFromParent();
-                }
-                
+                objectRemoved(obj);
+                obj.removeFromParent();
                 repo.save();
-                reload();
                 refreshSharedTree();
                 Notification.show("Moved Object '" + newName + "' to Shared OR");
-                promptTestCaseReload();
             }
         }
         if (isMobile) {
             ResolvedMobileObject resolved =
                 repo.resolveMobileObject(
                     new ResolvedMobileObject.PageRef(
-                        pageName,
+                        page.getName(),
                         WebOR.ORScope.PROJECT
                     ),
                     objectName
@@ -1030,59 +953,14 @@ public abstract class ObjectTree implements ActionListener {
                 Notification.show("Mobile Object not found in Project OR");
                 return;
             }
-            String newName = repo.moveMobileObject(resolved, pageName);
+            String newName = repo.moveMobileObject(resolved, page.getName());
             if (newName != null) {
-                // Check if source page is now empty and remove it
-                MobileOR projectOR = repo.getMobileOR();
-                MobileORPage sourcePage = projectOR.getPageByName(pageName);
-                if (sourcePage != null && sourcePage.getObjectGroups().isEmpty()) {
-                    sourcePage.removeFromParent();
-                }
-                
+                objectRemoved(obj);
+                obj.removeFromParent();
                 repo.save();
-                reload();
                 refreshSharedTree();
                 Notification.show("Moved Mobile Object '" + newName + "' to Shared OR");
-                promptTestCaseReload();
             }
-        } else if (isSap) {
-            com.ing.datalib.or.sap.ResolvedSapObject sresolved =
-                repo.resolveSapObject(
-                    new com.ing.datalib.or.sap.ResolvedSapObject.PageRef(
-                        page.getName(),
-                        com.ing.datalib.or.sap.SapOR.ORScope.PROJECT
-                    ),
-                    objectName
-                );
-            if (sresolved == null) {
-                com.ing.ide.util.Notification.show("Object '" + objectName + "' not found in Project SAP OR (Page '" + page.getName() + "').");
-                return;
-            }
-
-            String copiedName = repo.copySapObject(sresolved, page.getName());
-            if (copiedName != null) {
-                com.ing.ide.util.Notification.show("Copied Object '" + copiedName + "' from Page '" + page.getName() + "' to Shared SAP Object successfully.");
-            } else {
-                com.ing.ide.util.Notification.show("Copy failed. Could not copy Object '" + objectName + "' to Shared SAP Object (Page '" + page.getName() + "').");
-            }
-            if (copiedName != null) {
-                if (this instanceof com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree) {
-                    com.ing.ide.main.mainui.components.testdesign.or.sap.SapORPanel panel =
-                        ((com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree) this).getORPanel();
-                    panel.getSharedTree().load();
-                } else {
-                    reload();
-                }
-            }
-        }
-    }
-
-    private void promptTestCaseReload() {
-        try {
-            getTestDesign().getTestCaseComp().reload();
-            Notification.show("Test cases reloaded successfully");
-        } catch (Exception e) {
-            // Silently ignore if no test case is currently open
         }
     }
 
@@ -1091,30 +969,24 @@ public abstract class ObjectTree implements ActionListener {
         ORRootInf root = getOR();
         boolean isWeb = root instanceof WebOR;
         boolean isMobile = root instanceof MobileOR;
-        String pageName = page.getName();
-        
         if (isWeb) {
-            String movedPageName = repo.moveWebPage(pageName, pageName);
-            if (movedPageName != null) {
+            String newPageName = repo.copyWebPage(page.getName(), page.getName());
+            if (newPageName != null) {
+                pageRemoved(page);
+                page.removeFromParent();
                 repo.save();
-                reload();
                 refreshSharedTree();
-                Notification.show("Moved Page '" + pageName + "' to Shared OR");
-                promptTestCaseReload();
-            } else {
-                Notification.show("Failed to move page '" + pageName + "' to Shared OR");
+                Notification.show( "Moved Page '" + page.getName() + "' to Shared OR");
             }
         }
         if (isMobile) {
-            String movedPageName = repo.moveMobilePage(pageName, pageName);
-            if (movedPageName != null) {
+            String newPageName = repo.copyMobilePage(page.getName(), page.getName());
+            if (newPageName != null) {
+                pageRemoved(page);
+                page.removeFromParent();
                 repo.save();
-                reload();
                 refreshSharedTree();
-                Notification.show("Moved Mobile Page '" + pageName + "' to Shared OR");
-                promptTestCaseReload();
-            } else {
-                Notification.show("Failed to move mobile page '" + pageName + "' to Shared OR");
+                Notification.show("Moved Mobile Page '" + page.getName() + "' to Shared OR");
             }
         }
     }
@@ -1129,7 +1001,6 @@ public abstract class ObjectTree implements ActionListener {
             panel.getSharedTree().load();
         }
     }
-
 
     public Boolean navigateToObject(String objectName, String pageName) {
         // Parse the pageName to extract actual page name (handles scoped references like "[Project] PageName")
@@ -1364,7 +1235,6 @@ public abstract class ObjectTree implements ActionListener {
         if (!ORClipboardManager.hasData()) {
             return;
         }
-        ORObjectInf pastedObject = null;
         ORObjectClipboard cb = ORClipboardManager.get();
         ORObjectInf source = cb.getObject();
         boolean cut = cb.isCut();
@@ -1431,7 +1301,6 @@ public abstract class ObjectTree implements ActionListener {
                     cloned.setParent(newGroup);
                     srcObj.clone(cloned);
                     newGroup.getObjects().add(cloned);
-                    pastedObject = cloned;
                 }
                 targetPage.getObjectGroups().add(newGroup);
                 ((WebOR) currentOR).setSaved(false);
@@ -1455,7 +1324,6 @@ public abstract class ObjectTree implements ActionListener {
                     cloned.setParent(newGroup);
                     srcObj.clone(cloned);
                     newGroup.getObjects().add(cloned);
-                    pastedObject = cloned;
                 }
                 targetPage.getObjectGroups().add(newGroup);
                 ((MobileOR) currentOR).setSaved(false);
@@ -1475,12 +1343,6 @@ public abstract class ObjectTree implements ActionListener {
                 }
             }
             reload();
-            final ORObjectInf highlight = pastedObject;
-            if (highlight != null) {
-                SwingUtilities.invokeLater(() -> {
-                    selectAndSrollTo(highlight.getTreePath());
-                });
-            }
             return;
         }
         if (currentOR instanceof WebOR && !((WebOR) currentOR).isShared() && sourceOR instanceof WebOR && ((WebOR) sourceOR).isShared()) {
@@ -1501,16 +1363,8 @@ public abstract class ObjectTree implements ActionListener {
             }
             targetPage.getObjectGroups().add(newGroup);
             reload();
-            final ORObjectInf highlight = pastedObject;
-            if (highlight != null) {
-                SwingUtilities.invokeLater(() -> {
-                    selectAndSrollTo(highlight.getTreePath());
-                });
-            }
             return;
         }
-        String expectedObjectName = source.getName();
-        String targetPageName = targetPage.getName();
         if (currentOR instanceof WebOR) {
             ResolvedWebObject resolved =
                 repo.resolveWebObjectWithScope(
@@ -1528,15 +1382,6 @@ public abstract class ObjectTree implements ActionListener {
                 ORClipboardManager.clear();
             }
             reload();
-            SwingUtilities.invokeLater(() -> {
-                ORPageInf page = getOR().getPageByName(targetPageName);
-                if (page != null) {
-                    ORObjectInf pasted = findObjectInPage(page, expectedObjectName);
-                    if (pasted != null) {
-                        selectAndSrollTo(pasted.getTreePath());
-                    }
-                }
-            });
             return;
         }
         if (currentOR instanceof MobileOR) {
@@ -1556,15 +1401,6 @@ public abstract class ObjectTree implements ActionListener {
                 ORClipboardManager.clear();
             }
             reload();
-            SwingUtilities.invokeLater(() -> {
-                ORPageInf page = getOR().getPageByName(targetPageName);
-                if (page != null) {
-                    ORObjectInf pasted = findObjectInPage(page, expectedObjectName);
-                    if (pasted != null) {
-                        selectAndSrollTo(pasted.getTreePath());
-                    }
-                }
-            });
         }
     }
 
@@ -1577,19 +1413,6 @@ public abstract class ObjectTree implements ActionListener {
             candidate = base + "_Copy_" + index++;
         } while (objectNameExists(page, candidate));
         return candidate;
-    }
-
-    private ORObjectInf findObjectInPage(ORPageInf page, String objectName) {
-        for (Object groupObj : page.getObjectGroups()) {
-            ObjectGroup<?> group = (ObjectGroup<?>) groupObj;
-            for (Object obj : group.getObjects()) {
-                ORObjectInf orObj = (ORObjectInf) obj;
-                if (objectName.equals(orObj.getName())) {
-                    return orObj;
-                }
-            }
-        }
-        return null;
     }
 
     private boolean objectNameExists(ORPageInf page, String name) {
@@ -1733,7 +1556,6 @@ public abstract class ObjectTree implements ActionListener {
                 ORClipboardManager.clear();
             }
             reload();
-            SwingUtilities.invokeLater(() -> {selectAndSrollTo(newPage.getTreePath());});
             return;
         }
         if (currentOR instanceof WebOR && !((WebOR) currentOR).isShared() && sourceOR instanceof WebOR && ((WebOR) sourceOR).isShared()) {
@@ -1758,7 +1580,6 @@ public abstract class ObjectTree implements ActionListener {
             }
             pageAdded(newPage);
             reload();
-            SwingUtilities.invokeLater(() -> {selectAndSrollTo(newPage.getTreePath());});
             return;
         }
         if (currentOR instanceof MobileOR && !((MobileOR) currentOR).isShared() && sourceOR instanceof MobileOR && ((MobileOR) sourceOR).isShared()) {
@@ -1783,45 +1604,32 @@ public abstract class ObjectTree implements ActionListener {
             }
             pageAdded(newPage);
             reload();
-            SwingUtilities.invokeLater(() -> {selectAndSrollTo(newPage.getTreePath());});
             return;
         }
         if (currentOR instanceof WebOR) {
-            String targetPageName = cut
+            String targetName = cut
                 ? sourcePage.getName()
                 : computeCopyPageName(sourcePage);
-            repo.copyWebPage(sourcePage.getName(), targetPageName);
+            repo.copyWebPage(sourcePage.getName(), targetName);
             if (cut) {
                 pageRemoved(sourcePage);
                 sourcePage.removeFromParent();
                 ORClipboardManager.clear();
             }
             reload();
-            SwingUtilities.invokeLater(() -> {
-                ORPageInf pastedPage = getOR().getPageByName(targetPageName);
-                if (pastedPage != null) {
-                    selectAndSrollTo(pastedPage.getTreePath());
-                }
-            });
             return;
         }
         if (currentOR instanceof MobileOR) {
-            String targetPageName = cut
+            String targetName = cut
                 ? sourcePage.getName()
                 : computeCopyPageName(sourcePage);
-            repo.copyMobilePage(sourcePage.getName(), targetPageName);
+            repo.copyMobilePage(sourcePage.getName(), targetName);
             if (cut) {
                 pageRemoved(sourcePage);
                 sourcePage.removeFromParent();
                 ORClipboardManager.clear();
             }
             reload();
-            SwingUtilities.invokeLater(() -> {
-                ORPageInf pastedPage = getOR().getPageByName(targetPageName);
-                if (pastedPage != null) {
-                    selectAndSrollTo(pastedPage.getTreePath());
-                }
-            });
         }
     }
 
@@ -1834,5 +1642,4 @@ public abstract class ObjectTree implements ActionListener {
         } while (getOR().getPageByName(candidate) != null);
         return candidate;
     }
-    
 }

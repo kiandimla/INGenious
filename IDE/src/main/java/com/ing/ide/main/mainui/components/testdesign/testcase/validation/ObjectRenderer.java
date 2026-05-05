@@ -61,7 +61,6 @@ public class ObjectRenderer extends AbstractRenderer {
         String pageToken = step.getReference();
         String objectName = step.getObject();
         
-        // Check Web OR
         ResolvedWebObject.PageRef wref = ResolvedWebObject.PageRef.parse(pageToken);
         if ((wref != null && wref.name != null && wref.scope != null) && (repo.resolveWebObject(wref, objectName) != null)
                 || (repo.resolveWebObjectWithScope(pageToken, objectName) != null)) {

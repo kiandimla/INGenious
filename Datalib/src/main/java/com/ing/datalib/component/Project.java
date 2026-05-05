@@ -30,13 +30,6 @@ import com.ing.datalib.util.data.FileScanner;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ing.datalib.component.utils.FileUtils;
-import static com.ing.datalib.component.utils.FileUtils.DIR_FILTER;
-import com.ing.datalib.exception.TestCaseConversionException;
-import com.ing.datalib.model.DataItem;
-import com.ing.datalib.model.Meta;
-import com.ing.datalib.model.ProjectInfo;
-import com.ing.datalib.or.ObjectRepository;
 import com.ing.datalib.or.mobile.MobileOR;
 import com.ing.datalib.or.web.WebOR;
 import com.ing.datalib.or.web.WebOR.ORScope;
@@ -855,7 +848,7 @@ public class Project {
      * are tool-agnostic and only care about PROJECT vs SHARED.
      */
     public void refactorMobileObjectName(MobileOR.ORScope scope, String pageName, String oldName, String newName) {
-        for (Scenario scenario : getAllScenarios()) {
+        for (Scenario scenario : scenarios) {
             WebOR.ORScope webScope =
             (scope == MobileOR.ORScope.SHARED)
                 ? WebOR.ORScope.SHARED
