@@ -90,7 +90,7 @@ public class YamlORReader {
      * Check if a YAML-based SAP OR exists.
      */
     public boolean sapORExists(File orLocation) {
-        File sapPagesDir = new File(orLocation, "SAP/pages");
+        File sapPagesDir = new File(orLocation, "SAP");
         return sapPagesDir.exists() && sapPagesDir.isDirectory();
     }
     
@@ -234,7 +234,13 @@ public class YamlORReader {
      */
     public SapOR readSapOR(File orLocation) throws IOException {
         SapOR sapOR = new SapOR();
-        File sapPagesDir = new File(orLocation, "SAP/pages");
+        File sapPagesDir = new File(orLocation, "SAP");
+        
+        if (orLocation.getPath().contains(File.separator + "Shared" + File.separator)) {
+            sapOR.setScope(SapOR.ORScope.SHARED);
+        } else {
+            sapOR.setScope(SapOR.ORScope.PROJECT);
+        }
         
         if (!sapPagesDir.exists()) {
             LOGGER.info("No SAP OR YAML directory found at: " + sapPagesDir.getAbsolutePath());

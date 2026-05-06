@@ -244,7 +244,7 @@ public class SapOR implements ORRootInf<SapORPage> {
     public String getRepLocation() {
         return repLocationOverride != null
                 ? repLocationOverride
-                : getObjectRepository().getSapORRepLocation();
+                : getObjectRepository().getORRepLocation();
     }
 
     @JsonIgnore
@@ -277,5 +277,13 @@ public class SapOR implements ORRootInf<SapORPage> {
     
     public void setProjects(List<String> projects) {
         this.projects = (projects == null) ? new ArrayList<>() : projects;
+    }
+
+    public List<String> getSharedProjects() {
+        return isShared() ? projects : Collections.emptyList();
+    }
+    
+    public void setSharedProjects(List<String> projects) {
+        this.projects = projects;
     }
 }

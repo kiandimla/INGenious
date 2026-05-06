@@ -88,7 +88,11 @@ public class SapORPage implements ORPageInf<SapORObject, SapOR> {
     public void removeFromParent() {
         root.setSaved(false);
         root.getPages().remove(this);
-        FileUtils.deleteFile(getRepLocation());
+        if (root.getObjectRepository().isUsingYamlFormat()) {
+            root.getObjectRepository().deleteSapPageYaml(getName());
+        } else {
+            FileUtils.deleteFile(getRepLocation());
+        }
     }
 
     @JsonIgnore

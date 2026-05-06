@@ -14,6 +14,9 @@ import com.ing.datalib.or.mobile.MobileOR;
 import com.ing.datalib.or.mobile.MobileORObject;
 import com.ing.datalib.or.mobile.MobileORPage;
 import com.ing.datalib.or.mobile.ResolvedMobileObject;
+import com.ing.datalib.or.sap.SapOR;
+import com.ing.datalib.or.sap.SapORObject;
+import com.ing.datalib.or.sap.SapORPage;
 import com.ing.datalib.or.web.ResolvedWebObject;
 import com.ing.datalib.or.web.WebOR;
 import com.ing.datalib.or.web.WebORObject;
@@ -501,6 +504,7 @@ public abstract class ObjectTree implements ActionListener {
     private void removeUnusedObject() {
         boolean webDeletionPerformed = false;
         boolean mobileDeletionPerformed = false;
+        boolean sapDeletionPerformed = false;
         try {
             List<ORPageInf> selectedPages = getSelectedPages();
             if (selectedPages == null || selectedPages.isEmpty()) {
@@ -509,6 +513,7 @@ public abstract class ObjectTree implements ActionListener {
             ObjectRepository repo = getProject().getObjectRepository();
             WebOR projectWebOR = repo.getWebOR();
             MobileOR projectMobileOR = repo.getMobileOR();
+            SapOR projectSapOR = repo.getSapOR();
             Set<String> usedProjectObjects = new HashSet<>();
             for (Scenario scenario : getProject().getAllScenarios()) {
                 for (TestCase testCase : scenario.getTestCases()) {
@@ -610,7 +615,46 @@ public abstract class ObjectTree implements ActionListener {
                     }
                 }
             }
-            if (webDeletionPerformed || mobileDeletionPerformed) {
+            for (ORPageInf selectedPage : selectedPages) {
+                String pageName = selectedPage.getName();
+                SapORPage sapPage = projectSapOR.getPageByName(pageName);
+                if (sapPage == null) {
+                    continue;
+                }
+                List<String> unusedSapObjects = new ArrayList<>();
+                for (ObjectGroup group : sapPage.getObjectGroups()) {
+                    if (!usedProjectObjects.contains(pageName + "@" + group.getName())) {
+                        unusedSapObjects.add(group.getName());
+                    }
+                }
+                if (!unusedSapObjects.isEmpty()) {
+                    int option = JOptionPane.showConfirmDialog(
+                        null,
+                        "<html><body><p style='width: 260px;'>"
+                        + "Delete the following SAP objects from page [ "
+                        + pageName + " ]?<br>"
+                        + unusedSapObjects
+                        + "</p></body></html>",
+                        "Delete SAP Objects",
+                        JOptionPane.YES_NO_OPTION
+                    );
+                    if (option == JOptionPane.YES_OPTION) {
+                        Iterator<ObjectGroup<SapORObject>> it = sapPage.getObjectGroups().iterator();
+                        while (it.hasNext()) {
+                            ObjectGroup group = it.next();
+                            if (unusedSapObjects.contains(group.getName())) {
+                                it.remove();
+                                projectSapOR.setSaved(false);
+                                sapDeletionPerformed = true;
+                            }
+                        }
+                        if (sapDeletionPerformed) {
+                            repo.saveSapPageNow(sapPage);
+                        }
+                    }
+                }
+            }
+            if (webDeletionPerformed || mobileDeletionPerformed || sapDeletionPerformed) {
                 repo.save();
                 int option = JOptionPane.showConfirmDialog(
                     null,
@@ -1257,11 +1301,19 @@ public abstract class ObjectTree implements ActionListener {
             Notification.show("Cut is not allowed from Shared to Project Object Repository");
             return;
         }
+        if (cut && sourceOR instanceof SapOR && ((SapOR) sourceOR).isShared() && currentOR instanceof SapOR && !((SapOR) currentOR).isShared()) {
+            Notification.show("Cut is not allowed from Shared to Project Object Repository");
+            return;
+        }
         if (cut && sourceOR instanceof WebOR && !((WebOR) sourceOR).isShared() && currentOR instanceof WebOR && ((WebOR) currentOR).isShared()) {
             Notification.show("Cut is not allowed in Shared Object Repository. Use `Move to Shared` instead.");
             return;
         }
         if (cut && sourceOR instanceof MobileOR && !((MobileOR) sourceOR).isShared() && currentOR instanceof MobileOR && ((MobileOR) currentOR).isShared()) {
+            Notification.show("Cut is not allowed in Shared Object Repository. Use `Move to Shared` instead.");
+            return;
+        }
+        if (cut && sourceOR instanceof SapOR && !((SapOR) sourceOR).isShared() && currentOR instanceof SapOR && ((SapOR) currentOR).isShared()) {
             Notification.show("Cut is not allowed in Shared Object Repository. Use `Move to Shared` instead.");
             return;
         }
@@ -1329,6 +1381,29 @@ public abstract class ObjectTree implements ActionListener {
                 ((MobileOR) currentOR).setSaved(false);
                 repo.saveMobilePageNow((MobileORPage) targetPage);
             }
+            else if (currentOR instanceof SapOR) {
+                for (Object o : sourceGroup.getObjects()) {
+                    SapORObject srcObj = (SapORObject) o;
+                    String newObjectName;
+                    if (!cut) {
+                        newObjectName = computeCopyName(targetPage, srcObj);
+                    } else {
+                        if (objectNameExists(targetPage, srcObj.getName())) {
+                            newObjectName = computeCopyName(targetPage, srcObj);
+                        } else {
+                            newObjectName = srcObj.getName();
+                        }
+                    }
+                    SapORObject cloned = new SapORObject();
+                    cloned.setName(newObjectName);
+                    cloned.setParent(newGroup);
+                    srcObj.clone(cloned);
+                    newGroup.getObjects().add(cloned);
+                }
+                targetPage.getObjectGroups().add(newGroup);
+                ((SapOR) currentOR).setSaved(false);
+                repo.saveSapPageNow((SapORPage) targetPage);
+            }
             if (cut) {
                 ORPageInf sourcePage = source.getPage();
                 objectRemoved(source);
@@ -1340,6 +1415,9 @@ public abstract class ObjectTree implements ActionListener {
                 } else if (sourceOR instanceof MobileOR) {
                     ((MobileOR) sourceOR).setSaved(false);
                     repo.saveMobilePageNow((MobileORPage) sourcePage);
+                } else if (sourceOR instanceof SapOR) {
+                    ((SapOR) sourceOR).setSaved(false);
+                    repo.saveSapPageNow((SapORPage) sourcePage);
                 }
             }
             reload();
@@ -1395,6 +1473,25 @@ public abstract class ObjectTree implements ActionListener {
                 return;
             }
             repo.copyMobileObject(resolved, targetPage.getName());
+            if (cut) {
+                objectRemoved(source);
+                source.removeFromParent();
+                ORClipboardManager.clear();
+            }
+            reload();
+            return;
+        }
+        if (currentOR instanceof SapOR) {
+            ResolvedSapObject resolved =
+                repo.resolveSapObjectWithScope(
+                    source.getPage().getName(),
+                    sourceGroup.getName()
+                );
+            if (resolved == null || !resolved.isPresent()) {
+                Notification.show("Failed to resolve SAP object");
+                return;
+            }
+            repo.copySapObject(resolved, targetPage.getName());
             if (cut) {
                 objectRemoved(source);
                 source.removeFromParent();
@@ -1502,11 +1599,20 @@ public abstract class ObjectTree implements ActionListener {
             );
             return;
         }
+        if (cut && sourceOR instanceof SapOR && ((SapOR) sourceOR).isShared() && currentOR instanceof SapOR && !((SapOR) currentOR).isShared()) {
+            Notification.show("Cut is not allowed from Shared to Project Object Repository"
+            );
+            return;
+        }
         if (cut && sourceOR instanceof WebOR && !((WebOR) sourceOR).isShared() && currentOR instanceof WebOR && ((WebOR) currentOR).isShared()) {
             Notification.show( "Cut is not allowed in Shared Object Repository. Use `Move to Shared` instead.");
             return;
         }
         if (cut && sourceOR instanceof MobileOR && !((MobileOR) sourceOR).isShared() && currentOR instanceof MobileOR && ((MobileOR) currentOR).isShared()) {
+            Notification.show( "Cut is not allowed in Shared Object Repository. Use `Move to Shared` instead.");
+            return;
+        }
+        if (cut && sourceOR instanceof SapOR && !((SapOR) sourceOR).isShared() && currentOR instanceof SapOR && ((SapOR) currentOR).isShared()) {
             Notification.show( "Cut is not allowed in Shared Object Repository. Use `Move to Shared` instead.");
             return;
         }
@@ -1541,6 +1647,23 @@ public abstract class ObjectTree implements ActionListener {
                     for (Object o : srcGroup.getObjects()) {
                         MobileORObject srcObj = (MobileORObject) o;
                         MobileORObject cloned = new MobileORObject();
+                        cloned.setName(srcObj.getName());
+                        cloned.setParent(newGroup);
+                        srcObj.clone(cloned);
+                        newGroup.getObjects().add(cloned);
+                    }
+                    tgtPage.getObjectGroups().add(newGroup);
+                }
+            }
+            else if (currentOR instanceof SapOR) {
+                SapORPage srcPage = (SapORPage) sourcePage;
+                SapORPage tgtPage = (SapORPage) newPage;
+                for (Object g : srcPage.getObjectGroups()) {
+                    ObjectGroup srcGroup = (ObjectGroup) g;
+                    ObjectGroup newGroup = new ObjectGroup(srcGroup.getName(), tgtPage);
+                    for (Object o : srcGroup.getObjects()) {
+                        SapORObject srcObj = (SapORObject) o;
+                        SapORObject cloned = new SapORObject();
                         cloned.setName(srcObj.getName());
                         cloned.setParent(newGroup);
                         srcObj.clone(cloned);
@@ -1606,6 +1729,30 @@ public abstract class ObjectTree implements ActionListener {
             reload();
             return;
         }
+        if (currentOR instanceof SapOR && !((SapOR) currentOR).isShared() && sourceOR instanceof SapOR && ((SapOR) sourceOR).isShared()) {
+            String newPageName = cut
+                ? sourcePage.getName()
+                : computeCopyPageName(sourcePage);
+            ORPageInf newPage = getOR().addPage(newPageName);
+            SapORPage srcPage = (SapORPage) sourcePage;
+            SapORPage tgtPage = (SapORPage) newPage;
+            for (Object g : srcPage.getObjectGroups()) {
+                ObjectGroup srcGroup = (ObjectGroup) g;
+                ObjectGroup newGroup = new ObjectGroup(srcGroup.getName(), tgtPage);
+                for (Object o : srcGroup.getObjects()) {
+                    SapORObject srcObj = (SapORObject) o;
+                    SapORObject cloned = new SapORObject();
+                    cloned.setName(srcObj.getName());
+                    cloned.setParent(newGroup);
+                    srcObj.clone(cloned);
+                    newGroup.getObjects().add(cloned);
+                }
+                tgtPage.getObjectGroups().add(newGroup);
+            }
+            pageAdded(newPage);
+            reload();
+            return;
+        }
         if (currentOR instanceof WebOR) {
             String targetName = cut
                 ? sourcePage.getName()
@@ -1624,6 +1771,19 @@ public abstract class ObjectTree implements ActionListener {
                 ? sourcePage.getName()
                 : computeCopyPageName(sourcePage);
             repo.copyMobilePage(sourcePage.getName(), targetName);
+            if (cut) {
+                pageRemoved(sourcePage);
+                sourcePage.removeFromParent();
+                ORClipboardManager.clear();
+            }
+            reload();
+            return;
+        }
+        if (currentOR instanceof SapOR) {
+            String targetName = cut
+                ? sourcePage.getName()
+                : computeCopyPageName(sourcePage);
+            repo.copySapPage(sourcePage.getName(), targetName);
             if (cut) {
                 pageRemoved(sourcePage);
                 sourcePage.removeFromParent();

@@ -1,15 +1,17 @@
 
 package com.ing.datalib.or;
 
-import com.ing.datalib.or.mobile.MobileOR;
-import com.ing.datalib.or.mobile.MobileORPage;
-import com.ing.datalib.or.web.WebOR;
-import com.ing.datalib.or.web.WebORPage;
-import com.ing.datalib.or.yaml.YamlORWriter;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.logging.Logger;
+
+import com.ing.datalib.or.mobile.MobileOR;
+import com.ing.datalib.or.mobile.MobileORPage;
+import com.ing.datalib.or.sap.SapOR;
+import com.ing.datalib.or.sap.SapORPage;
+import com.ing.datalib.or.web.WebOR;
+import com.ing.datalib.or.web.WebORPage;
+import com.ing.datalib.or.yaml.YamlORWriter;
 
 /**
  * Converts in-memory XML Object Repositories to YAML.
@@ -38,6 +40,8 @@ public class XmlToYamlORConverter {
             WebOR sharedWeb,
             MobileOR projectMobile,
             MobileOR sharedMobile,
+            SapOR sapProjectOR,
+            SapOR sapSharedOR,
             File projectRoot,
             File sharedRoot) throws IOException {
 
@@ -46,6 +50,9 @@ public class XmlToYamlORConverter {
 
         writeProjectMobile(projectMobile, projectRoot);
         writeSharedMobile(sharedMobile, sharedRoot);
+
+        writeProjectSap(sapProjectOR, projectRoot);
+        writeSharedSap(sapSharedOR, sharedRoot);
     }
 
     private void writeProjectWeb(WebOR projectOR, File projectRoot)
@@ -78,6 +85,21 @@ public class XmlToYamlORConverter {
         }
     }
 
+    private void writeProjectSap(SapOR projectOR, File projectRoot)
+            throws IOException {
+
+        if (projectOR == null) return;
+
+        File pagesDir = new File(projectRoot, "SAP");
+        pagesDir.mkdirs();
+
+        LOG.info("Writing PROJECT SAP OR to " + pagesDir.getAbsolutePath());
+
+        for (SapORPage page : projectOR.getPages()) {
+            yamlWriter.writeSapPage(page, pagesDir);
+        }
+    }
+
     private void writeSharedWeb(WebOR sharedOR, File sharedRoot)
             throws IOException {
 
@@ -105,6 +127,21 @@ public class XmlToYamlORConverter {
 
         for (MobileORPage page : sharedOR.getPages()) {
             yamlWriter.writeMobilePage(page, pagesDir);
+        }
+    }
+
+    private void writeSharedSap(SapOR sharedOR, File sharedRoot)
+            throws IOException {
+
+        if (sharedOR == null) return;
+
+        File pagesDir = new File(sharedRoot, "SAP");
+        pagesDir.mkdirs();
+
+        LOG.info("Writing SHARED SAP OR to " + pagesDir.getAbsolutePath());
+
+        for (SapORPage page : sharedOR.getPages()) {
+            yamlWriter.writeSapPage(page, pagesDir);
         }
     }
 }

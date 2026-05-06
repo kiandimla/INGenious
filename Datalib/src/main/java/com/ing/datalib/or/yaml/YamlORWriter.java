@@ -1,28 +1,27 @@
 package com.ing.datalib.or.yaml;
 
-import com.ing.datalib.or.structureddata.StructuredData;
-import com.ing.datalib.or.structureddata.StructuredDataORPage;
-import com.ing.datalib.or.mobile.MobileOR;
-import com.ing.datalib.or.mobile.MobileORPage;
-import com.ing.datalib.or.sap.SapOR;
-import com.ing.datalib.or.sap.SapORPage;
-import com.ing.datalib.or.web.WebOR;
-import com.ing.datalib.or.web.WebORPage;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
-
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.logging.Level;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
+import com.ing.datalib.or.mobile.MobileOR;
+import com.ing.datalib.or.mobile.MobileORPage;
+import com.ing.datalib.or.sap.SapOR;
+import com.ing.datalib.or.sap.SapORPage;
+import com.ing.datalib.or.structureddata.StructuredData;
+import com.ing.datalib.or.structureddata.StructuredDataORPage;
+import com.ing.datalib.or.web.WebOR;
+import com.ing.datalib.or.web.WebORPage;
 
 /**
  * Writes YAML-based Object Repository files.
@@ -123,7 +122,7 @@ public class YamlORWriter {
      * @param orLocation The ObjectRepository directory
      */
     public void writeSapOR(SapOR sapOR, File orLocation) throws IOException {
-        File sapPagesDir = new File(orLocation, "SAP/pages");
+        File sapPagesDir = new File(orLocation, "SAP");
         ensureDirectory(sapPagesDir);
         
         List<SapORPage> pages = sapOR.getPages();
@@ -233,7 +232,7 @@ public class YamlORWriter {
      * Delete a SAP page YAML file.
      */
     public boolean deleteSapPage(String pageName, File orLocation) {
-        File sapPagesDir = new File(orLocation, "SAP/pages");
+        File sapPagesDir = new File(orLocation, "SAP");
         File yamlFile = new File(sapPagesDir, sanitizeFileName(pageName) + ".yaml");
         
         if (yamlFile.exists()) {
@@ -324,7 +323,7 @@ public class YamlORWriter {
      * @return true if rename was successful
      */
     public boolean renameSapPage(String oldName, String newName, File orLocation) {
-        File sapPagesDir = new File(orLocation, "SAP/pages");
+        File sapPagesDir = new File(orLocation, "SAP");
         File oldFile = new File(sapPagesDir, sanitizeFileName(oldName) + ".yaml");
         File newFile = new File(sapPagesDir, sanitizeFileName(newName) + ".yaml");
         
@@ -455,6 +454,18 @@ public class YamlORWriter {
             "MobileOR",
             mobileSharedOR.getSharedProjects(),
             "mobileor-projectsdata.yaml",
+            sharedRoot
+        );
+    }
+
+    public void writeSharedMetadata(SapOR sapSharedOR, File sharedRoot) throws IOException {
+        if (sapSharedOR == null || !sapSharedOR.isShared()) {
+            return;
+        }
+        writeSharedMetadataInternal(
+            "SapOR",
+            sapSharedOR.getProjects(),
+            "sapor-projectsdata.yaml",
             sharedRoot
         );
     }
