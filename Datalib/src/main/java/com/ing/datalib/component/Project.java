@@ -20,6 +20,18 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ing.datalib.component.utils.FileUtils;
 import static com.ing.datalib.component.utils.FileUtils.DIR_FILTER;
+import com.ing.datalib.model.DataItem;
+import com.ing.datalib.model.Meta;
+import com.ing.datalib.model.ProjectInfo;
+import com.ing.datalib.or.ObjectRepository;
+import com.ing.datalib.or.web.WebOR.ORScope;
+import com.ing.datalib.settings.ProjectSettings;
+import com.ing.datalib.util.data.FileScanner;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ing.datalib.component.utils.FileUtils;
+import static com.ing.datalib.component.utils.FileUtils.DIR_FILTER;
 import com.ing.datalib.exception.TestCaseConversionException;
 import com.ing.datalib.model.DataItem;
 import com.ing.datalib.model.Meta;
@@ -418,7 +430,6 @@ public class Project {
             getObjectRepository().getWebSharedOR().setName(newName);
             getObjectRepository().getMobileOR().setName(newName);
             getObjectRepository().getMobileSharedOR().setName(newName);
-            getObjectRepository().getAPIOR().setName(newName);
             getObjectRepository().getSapOR().setName(newName);
             getObjectRepository().getSapSharedOR().setName(newName);
             return true;

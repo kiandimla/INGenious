@@ -75,16 +75,15 @@ public class ObjectRenderer extends AbstractRenderer {
         }
         
         ResolvedStructuredDataObject.PageRef aref = ResolvedStructuredDataObject.PageRef.parse(pageToken);
-        return ((aref != null && aref.name != null && aref.scope != null) && (repo.resolveStructuredDataObject(aref, objectName) != null)
-                || (repo.resolveStructuredDataObjectWithScope(pageToken, objectName) != null ));
+        if ((aref != null && aref.name != null && aref.scope != null) && (repo.resolveStructuredDataObject(aref, objectName) != null)
+                || (repo.resolveStructuredDataObjectWithScope(pageToken, objectName) != null )) {
+            return true;
+        }
         
         // Check SAP OR
         ResolvedSapObject.PageRef sref = ResolvedSapObject.PageRef.parse(pageToken);
-        if (sref != null && sref.name != null && sref.scope != null) {
-            if (repo.resolveSapObject(sref, objectName) != null) {
-                return true;
-            }
-        } else if (repo.resolveSapObjectWithScope(pageToken, objectName) != null) {
+        if ((sref != null && sref.name != null && sref.scope != null) && (repo.resolveSapObject(sref, objectName) != null)
+                || (repo.resolveSapObjectWithScope(pageToken, objectName) != null)) {
             return true;
         }
         
