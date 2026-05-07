@@ -1568,6 +1568,9 @@ public class ObjectRepository {
         SapORPage targetPage = getOrCreateSapPage(sharedSapOR, uniqueTargetName);
         copyAllSapGroups(sourcePage, targetPage);
         sharedSapOR.setSaved(false);
+        if (useYamlFormat) {
+            saveSapPageNow(targetPage);
+        }
         LOG.info(() -> "Copied SAP Page '" + sourcePageName
                 + "' to SHARED page '" + uniqueTargetName + "' successfully.");
         return uniqueTargetName;
@@ -1869,7 +1872,7 @@ public class ObjectRepository {
         }
     }
     
-    public boolean deleteWebPageYaml(String pageName) {
+    public boolean deleteWebPageYaml(String pageName, WebOR.ORScope scope) {
         if (!useYamlFormat || yamlWriter == null) {
             return true; // XML mode - no-op
         }
@@ -1877,7 +1880,9 @@ public class ObjectRepository {
             return true;
         }
         try {
-            File orRepLocation = new File(getORRepLocation());
+            File orRepLocation = (scope == WebOR.ORScope.SHARED) 
+                ? new File(getSharedORRepLocation()) 
+                : new File(getORRepLocation());
             return yamlWriter.deleteWebPage(pageName, orRepLocation);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to delete Web page YAML: " + pageName, e);
@@ -1885,7 +1890,7 @@ public class ObjectRepository {
         }
     }
     
-    public boolean deleteMobilePageYaml(String pageName) {
+    public boolean deleteMobilePageYaml(String pageName, MobileOR.ORScope scope) {
         if (!useYamlFormat || yamlWriter == null) {
             return true; // XML mode - no-op
         }
@@ -1893,7 +1898,9 @@ public class ObjectRepository {
             return true;
         }
         try {
-            File morRepLocation = new File(getORRepLocation());
+            File morRepLocation = (scope == MobileOR.ORScope.SHARED) 
+                ? new File(getSharedORRepLocation()) 
+                : new File(getORRepLocation());
             return yamlWriter.deleteMobilePage(pageName, morRepLocation);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to delete Mobile page YAML: " + pageName, e);
@@ -1901,7 +1908,7 @@ public class ObjectRepository {
         }
     }
     
-    public boolean deleteSapPageYaml(String pageName) {
+    public boolean deleteSapPageYaml(String pageName, SapOR.ORScope scope) {
         if (!useYamlFormat || yamlWriter == null) {
             return true; // XML mode - no-op
         }
@@ -1909,7 +1916,9 @@ public class ObjectRepository {
             return true;
         }
         try {
-            File sapRepLocation = new File(getORRepLocation());
+            File sapRepLocation = (scope == SapOR.ORScope.SHARED) 
+                ? new File(getSharedORRepLocation()) 
+                : new File(getORRepLocation());
             return yamlWriter.deleteSapPage(pageName, sapRepLocation);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Failed to delete SAP page YAML: " + pageName, e);

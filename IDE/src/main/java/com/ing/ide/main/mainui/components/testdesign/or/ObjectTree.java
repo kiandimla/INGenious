@@ -490,12 +490,27 @@ public abstract class ObjectTree implements ActionListener {
                 JOptionPane.YES_NO_OPTION
             );
             if (option == JOptionPane.YES_OPTION) {
+                ObjectRepository repo = getProject().getObjectRepository();
+                Set<ORPageInf> affectedPages = new HashSet<>();
+                
                 for (ORObjectInf object : objects) {
+                    ORPageInf page = object.getPage();
+                    affectedPages.add(page);
                     objectRemoved(object);
                     object.removeFromParent();
                 }
-                // Save immediately to update YAML files
-                ObjectRepository repo = getProject().getObjectRepository();
+                
+                // Save affected pages in YAML format
+                for (ORPageInf page : affectedPages) {
+                    if (page instanceof WebORPage) {
+                        repo.saveWebPageNow((WebORPage) page);
+                    } else if (page instanceof MobileORPage) {
+                        repo.saveMobilePageNow((MobileORPage) page);
+                    } else if (page instanceof SapORPage) {
+                        repo.saveSapPageNow((SapORPage) page);
+                    }
+                }
+                
                 repo.save();
             }
         }
@@ -854,12 +869,13 @@ public abstract class ObjectTree implements ActionListener {
                 JOptionPane.YES_NO_OPTION
             );
             if (option == JOptionPane.YES_OPTION) {
+                ObjectRepository repo = getProject().getObjectRepository();
+                
                 for (ORPageInf page : pages) {
                     pageRemoved(page);
                     page.removeFromParent();
                 }
-                // Save immediately to update YAML files
-                ObjectRepository repo = getProject().getObjectRepository();
+                
                 repo.save();
             }
         }
@@ -867,16 +883,28 @@ public abstract class ObjectTree implements ActionListener {
     
     private void getImpactedTestCases() {
         ObjectGroup group = getSelectedObjectGroup();
+        ORObjectInf selectedObject = null;
+        
         if (group == null) {
-            if (getSelectedObject() != null) {
-                group = getSelectedObject().getParent();
+            selectedObject = getSelectedObject();
+            if (selectedObject != null) {
+                group = selectedObject.getParent();
             } else {
                 Notification.show("Not supported for the selected");
                 return;
             }
         }
+        
         String pageName = group.getParent().getName();
-        String objectName = group.getName();
+        String objectName;
+        
+        // If an individual object is selected, use its name, otherwise use group name
+        if (selectedObject != null) {
+            objectName = selectedObject.getName();
+        } else {
+            objectName = group.getName();
+        }
+        
         WebOR.ORScope scope = isSharedScope()
                 ? WebOR.ORScope.SHARED
                 : WebOR.ORScope.PROJECT;
@@ -975,11 +1003,17 @@ public abstract class ObjectTree implements ActionListener {
                 Notification.show("Object not found in Project OR");
                 return;
             }
-            String newName = repo.moveWebObject(resolved, page.getName());
+            String pageName = page.getName();
+            String newName = repo.moveWebObject(resolved, pageName);
             if (newName != null) {
-                objectRemoved(obj);
-                obj.removeFromParent();
+                // Check if source page is now empty and remove it
+                WebOR projectOR = repo.getWebOR();
+                WebORPage sourcePage = projectOR.getPageByName(pageName);
+                if (sourcePage != null && sourcePage.getObjectGroups().isEmpty()) {
+                    sourcePage.removeFromParent();
+                }
                 repo.save();
+                reload();
                 refreshSharedTree();
                 Notification.show("Moved Object '" + newName + "' to Shared OR");
             }
@@ -997,13 +1031,47 @@ public abstract class ObjectTree implements ActionListener {
                 Notification.show("Mobile Object not found in Project OR");
                 return;
             }
-            String newName = repo.moveMobileObject(resolved, page.getName());
+            String pageName = page.getName();
+            String newName = repo.moveMobileObject(resolved, pageName);
             if (newName != null) {
-                objectRemoved(obj);
-                obj.removeFromParent();
+                // Check if source page is now empty and remove it
+                MobileOR projectOR = repo.getMobileOR();
+                MobileORPage sourcePage = projectOR.getPageByName(pageName);
+                if (sourcePage != null && sourcePage.getObjectGroups().isEmpty()) {
+                    sourcePage.removeFromParent();
+                }
                 repo.save();
+                reload();
                 refreshSharedTree();
                 Notification.show("Moved Mobile Object '" + newName + "' to Shared OR");
+            }
+        }
+        if (isSap) {
+            ResolvedSapObject resolved =
+                repo.resolveSapObject(
+                    new ResolvedSapObject.PageRef(
+                        page.getName(),
+                        SapOR.ORScope.PROJECT
+                    ),
+                    objectName
+                );
+            if (resolved == null || !resolved.isPresent()) {
+                Notification.show("SAP Object not found in Project OR");
+                return;
+            }
+            String pageName = page.getName();
+            String newName = repo.moveSapObject(resolved, pageName);
+            if (newName != null) {
+                // Check if source page is now empty and remove it
+                SapOR projectOR = repo.getSapOR();
+                SapORPage sourcePage = projectOR.getPageByName(pageName);
+                if (sourcePage != null && sourcePage.getObjectGroups().isEmpty()) {
+                    sourcePage.removeFromParent();
+                }
+                repo.save();
+                reload();
+                refreshSharedTree();
+                Notification.show("Moved SAP Object '" + newName + "' to Shared OR");
             }
         }
     }
@@ -1218,6 +1286,9 @@ public abstract class ObjectTree implements ActionListener {
         }
         if (root instanceof com.ing.datalib.or.mobile.MobileOR) {
             return ((com.ing.datalib.or.mobile.MobileOR) root).isShared();
+        }
+        if (root instanceof com.ing.datalib.or.sap.SapOR) {
+            return ((com.ing.datalib.or.sap.SapOR) root).isShared();
         }
         return false;
     }
