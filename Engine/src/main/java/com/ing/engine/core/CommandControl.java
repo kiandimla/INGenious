@@ -162,8 +162,10 @@ public abstract class CommandControl {
                     }
                 }
             }
+        } else if (SAPsession != null) {
+            return true;
         } else {
-            if (Page.isAlive()) {
+            if (Page != null && Page.isAlive()) {
                     switch (Action) {
                         case "waitForElementToBePresent":
                         case "setObjectProperty":
