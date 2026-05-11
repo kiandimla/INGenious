@@ -55,8 +55,13 @@ public class SAPObject {
 		pageName = pageKey;
 		objectName = objectKey;
 		findType=condition;
+		// Check if object exists in SAP OR before attempting to find properties
+		if (getSapObject(pageKey, objectKey) == null) {
+			System.out.println("Error: SAP object [" + objectKey + "] not found on page [" + pageKey + "] - possible non-SAP action on SAP browser");
+			return null;
+		}
 		String id=getRuntimeValue(getObjectProperty(pageKey, objectKey, ObjectProperty.Id));	
-		String text = getRuntimeValue(getObjectProperty(pageKey, objectKey, ObjectProperty.Text));				
+		String text = getRuntimeValue(getObjectProperty(pageKey, objectKey, ObjectProperty.Text));			
 		if (id == null) {
 			System.out.println("Error: Element ID is null for object [" + objectKey + "] on page [" + pageKey + "]");
 			return null;
@@ -90,7 +95,12 @@ public class SAPObject {
 	
 		
 	public String getObjectProperty(String pageName, String objectName, String propertyName) {
-		return getSapObject(pageName, objectName).getAttributeByName(propertyName);
+		SapORObject sapObj = getSapObject(pageName, objectName);
+		if (sapObj == null) {
+			System.out.println("Warning: SAP object [" + objectName + "] not found on page [" + pageName + "]. Returning null.");
+			return null;
+		}
+		return sapObj.getAttributeByName(propertyName);
 	}
 	
 	public SapORObject getSapObject(String page, String object) {
@@ -99,15 +109,28 @@ public class SAPObject {
 		try {
 			ResolvedSapObject.PageRef ref = ResolvedSapObject.PageRef.parse(page);
 			ResolvedSapObject resolved = objRep.resolveSapObject(ref, object);
-			if (resolved != null && resolved.getGroup() != null) {
+			if (resolved != null && resolved.getGroup() != null && !resolved.getGroup().getObjects().isEmpty()) {
 				return (SapORObject) resolved.getGroup().getObjects().get(0);
 			}
 		} catch (Exception ignore) { }
 		
-		if (objRep.getSapOR() != null && objRep.getSapOR().getPageByName(page) != null) {
-			return objRep.getSapOR().getPageByName(page).getObjectGroupByName(object).getObjects().get(0);
-		} else if (objRep.getSapSharedOR() != null && objRep.getSapSharedOR().getPageByName(page) != null) {
-			return objRep.getSapSharedOR().getPageByName(page).getObjectGroupByName(object).getObjects().get(0);
+		// Check SAP project OR
+		if (objRep.getSapOR() != null) {
+			if (objRep.getSapOR().getPageByName(page) != null) {
+				ObjectGroup<SapORObject> group = objRep.getSapOR().getPageByName(page).getObjectGroupByName(object);
+				if (group != null && !group.getObjects().isEmpty()) {
+					return group.getObjects().get(0);
+				}
+			}
+		}
+		// Check SAP shared OR
+		if (objRep.getSapSharedOR() != null) {
+			if (objRep.getSapSharedOR().getPageByName(page) != null) {
+				ObjectGroup<SapORObject> group = objRep.getSapSharedOR().getPageByName(page).getObjectGroupByName(object);
+				if (group != null && !group.getObjects().isEmpty()) {
+					return group.getObjects().get(0);
+				}
+			}
 		}
 		return null;
 	}
@@ -124,10 +147,17 @@ public class SAPObject {
 		} catch (Exception ignore) { }
 		
 		if (objRep.getSapOR() != null && objRep.getSapOR().getPageByName(page) != null) {
-			return objRep.getSapOR().getPageByName(page).getObjectGroupByName(object);
+			ObjectGroup<SapORObject> group = objRep.getSapOR().getPageByName(page).getObjectGroupByName(object);
+			if (group != null) {
+				return group;
+			}
 		} else if (objRep.getSapSharedOR() != null && objRep.getSapSharedOR().getPageByName(page) != null) {
-			return objRep.getSapSharedOR().getPageByName(page).getObjectGroupByName(object);
+			ObjectGroup<SapORObject> group = objRep.getSapSharedOR().getPageByName(page).getObjectGroupByName(object);
+			if (group != null) {
+				return group;
+			}
 		}
+		System.out.println("Warning: SAP object group [" + object + "] not found on page [" + page + "]. Returning null.");
 		return null;
 	}
 

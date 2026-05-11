@@ -6,6 +6,8 @@ import java.util.Map;
 import com.ing.engine.commands.browser.General;
 import com.ing.engine.core.CommandControl;
 import com.ing.engine.drivers.AutomationObject;
+import com.ing.engine.execution.exception.element.ElementException;
+import com.ing.engine.execution.exception.element.ElementException.ExceptionType;
 import com.ing.engine.support.Status;
 import com.ing.engine.support.methodInf.Action;
 import com.ing.engine.support.methodInf.InputType;
@@ -41,6 +43,46 @@ public class SAPActions extends General {
 
 	public SAPActions(CommandControl cc) {
 		super(cc);
+	}
+
+	// ============================================================================
+	// HELPER METHODS - VALIDATION & ERROR HANDLING
+	// ============================================================================
+
+	/**
+	 * Validates that SAPElement exists before attempting operations
+	 * @throws ElementException if SAPElement is null
+	 */
+	private void validateSAPElement() {
+		if (SAPElement == null) {
+			throw new ElementException(ExceptionType.Element_Not_Found, ObjectName);
+		}
+	}
+
+	/**
+	 * Validates that SAPsession exists before attempting operations
+	 * @throws ElementException if SAPsession is null
+	 */
+	private void validateSAPSession() {
+		if (SAPsession == null) {
+			throw new ElementException(ExceptionType.Element_Not_Found, "SAP Session");
+		}
+	}
+
+	/**
+	 * Safely parses integer input with validation
+	 * @param value the string value to parse
+	 * @param fieldName the field name for error reporting
+	 * @return the parsed integer
+	 * @throws NumberFormatException if value is not a valid integer
+	 */
+	private int parseIntSafely(String value, String fieldName) {
+		try {
+			return Integer.parseInt(value);
+		} catch (NumberFormatException e) {
+			Report.updateTestLog(Action, "Invalid " + fieldName + " format [" + value + "]. Expected integer.", Status.DEBUG);
+			throw e;
+		}
 	}
 
 	// ============================================================================
@@ -241,8 +283,12 @@ public class SAPActions extends General {
 	@Action(object = ObjectType.SAP, desc = "Enter the value [<Data>] in the field [<Object>]", input = InputType.YES)
 	public void sapFill() {
 		try {
+			validateSAPElement();
 			Dispatch.put(SAPElement, "Text", Data);
 			Report.updateTestLog(Action, "Entered Text '" + Data + "' on '" + ObjectName + "'", Status.DONE);
+		} catch (ElementException ex) {
+			Report.updateTestLog(Action, "Element [" + ObjectName + "] not found", Status.FAILNS);
+			throw ex;
 		} catch (Exception e) {
 			Report.updateTestLog(Action, "Failed to Enter Text. Error : " + e.getMessage(), Status.FAILNS);
 		}
@@ -255,8 +301,12 @@ public class SAPActions extends General {
 	@Action(object = ObjectType.SAP, desc = "Press [<Enter>] key", input = InputType.NO)
 	public void sapEnter() {
 		try {
+			validateSAPElement();
 			Dispatch.call(SAPElement, "sendVKey", 0);
 			Report.updateTestLog(Action, "Enter key pressed successfully.", Status.DONE);
+		} catch (ElementException ex) {
+			Report.updateTestLog(Action, "Element [" + ObjectName + "] not found", Status.FAILNS);
+			throw ex;
 		} catch (Exception e) {
 			Report.updateTestLog(Action, "Error in Enter key press. Error : " + e.getMessage(), Status.FAILNS);
 		}
@@ -270,8 +320,16 @@ public class SAPActions extends General {
 	@Action(object = ObjectType.SAP, desc = "Simulate key press with VCode [<Data>]", input = InputType.YES)
 	public void sapSimulateKeyPress() {
 		try {
-			Dispatch.call(SAPElement, "sendVKey", Integer.parseInt(Data));
+			validateSAPElement();
+			int vkeyCode = parseIntSafely(Data, "VKey code");
+			Dispatch.call(SAPElement, "sendVKey", vkeyCode);
 			Report.updateTestLog(Action, "Simulate key press with VKey code [" + Data + "]", Status.DONE);
+		} catch (ElementException ex) {
+			Report.updateTestLog(Action, "Element [" + ObjectName + "] not found", Status.FAILNS);
+			throw ex;
+		} catch (NumberFormatException ex) {
+			Report.updateTestLog(Action, "Invalid VKey code format [" + Data + "]. Expected integer.", Status.FAILNS);
+			throw new IllegalArgumentException(ex);
 		} catch (Exception e) {
 			Report.updateTestLog(Action,
 					"Fails to simulate key press with VKey code [" + Data + "]. Error : " + e.getMessage(),
@@ -286,8 +344,12 @@ public class SAPActions extends General {
 	@Action(object = ObjectType.SAP, desc = "Select all text in field [<Object>]", input = InputType.NO)
 	public void sapSelectAllText() {
 		try {
+			validateSAPElement();
 			Dispatch.call(SAPElement, "SelectAll");
 			Report.updateTestLog(Action, "Selected all text in [" + ObjectName + "]", Status.DONE);
+		} catch (ElementException ex) {
+			Report.updateTestLog(Action, "Element [" + ObjectName + "] not found", Status.FAILNS);
+			throw ex;
 		} catch (Exception e) {
 			Report.updateTestLog(Action, "Failed to select all text. Error: " + e.getMessage(), Status.FAILNS);
 		}
@@ -300,8 +362,16 @@ public class SAPActions extends General {
 	@Action(object = ObjectType.SAP, desc = "Set caret position to [<Data>]", input = InputType.YES)
 	public void sapSetCaretPosition() {
 		try {
-			Dispatch.put(SAPElement, "caretPosition", Integer.parseInt(Data));
+			validateSAPElement();
+			int position = parseIntSafely(Data, "caret position");
+			Dispatch.put(SAPElement, "caretPosition", position);
 			Report.updateTestLog(Action, "Set caret position to " + Data, Status.DONE);
+		} catch (ElementException ex) {
+			Report.updateTestLog(Action, "Element [" + ObjectName + "] not found", Status.FAILNS);
+			throw ex;
+		} catch (NumberFormatException ex) {
+			Report.updateTestLog(Action, "Invalid caret position format [" + Data + "]. Expected integer.", Status.FAILNS);
+			throw new IllegalArgumentException(ex);
 		} catch (Exception e) {
 			Report.updateTestLog(Action, "Failed to set caret position. Error: " + e.getMessage(), Status.FAILNS);
 		}
@@ -314,8 +384,19 @@ public class SAPActions extends General {
 	@Action(object = ObjectType.SAP, desc = "Set modified property to [<Data>]", input = InputType.YES)
 	public void sapSetModified() {
 		try {
+			validateSAPElement();
+			if (!Data.toLowerCase().matches("^(true|false)$")) {
+				Report.updateTestLog(Action, "Invalid boolean format [" + Data + "]. Expected 'true' or 'false'.", Status.DEBUG);
+				throw new IllegalArgumentException("Invalid boolean value: " + Data);
+			}
 			Dispatch.put(SAPElement, "modified", Boolean.parseBoolean(Data));
 			Report.updateTestLog(Action, "Set modified property to " + Data, Status.DONE);
+		} catch (ElementException ex) {
+			Report.updateTestLog(Action, "Element [" + ObjectName + "] not found", Status.FAILNS);
+			throw ex;
+		} catch (IllegalArgumentException ex) {
+			Report.updateTestLog(Action, "Invalid boolean format [" + Data + "]. Expected 'true' or 'false'.", Status.FAILNS);
+			throw ex;
 		} catch (Exception e) {
 			Report.updateTestLog(Action, "Failed to set modified property. Error: " + e.getMessage(), Status.FAILNS);
 		}
@@ -332,8 +413,12 @@ public class SAPActions extends General {
 	@Action(object = ObjectType.SAP, desc = "Click the [<Object>]")
 	public void sapClick() {
 		try {
+			validateSAPElement();
 			Dispatch.call(SAPElement, "press");
 			Report.updateTestLog(Action, "Clicking on [" + ObjectName + "]", Status.DONE);
+		} catch (ElementException ex) {
+			Report.updateTestLog(Action, "Element [" + ObjectName + "] not found", Status.FAILNS);
+			throw ex;
 		} catch (Exception e) {
 			Report.updateTestLog(Action, "Failed to click. Error : " + e.getMessage(), Status.FAILNS);
 		}
@@ -346,8 +431,12 @@ public class SAPActions extends General {
 	@Action(object = ObjectType.SAP, desc = "Press button with ID [<Data>]", input = InputType.YES)
 	public void sapPressButton() {
 		try {
+			validateSAPElement();
 			Dispatch.call(SAPElement, "pressButton", Data);
 			Report.updateTestLog(Action, "Pressed button [" + Data + "]", Status.DONE);
+		} catch (ElementException ex) {
+			Report.updateTestLog(Action, "Element [" + ObjectName + "] not found", Status.FAILNS);
+			throw ex;
 		} catch (Exception e) {
 			Report.updateTestLog(Action, "Failed to press button. Error: " + e.getMessage(), Status.FAILNS);
 		}
