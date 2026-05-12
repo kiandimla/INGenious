@@ -63,6 +63,7 @@ public class ObjectRepository {
     
     private final Set<String> webSharedUsageProjects = new HashSet<>();
     private final Set<String> mobileSharedUsageProjects = new HashSet<>();
+    private final Set<String> sapSharedUsageProjects = new HashSet<>();
     private List<String> webSharedProjectsFromXml = List.of();
     private List<String> mobileSharedProjectsFromXml = List.of();
     private List<String> sapSharedProjectsFromXml = List.of();
@@ -270,6 +271,23 @@ public class ObjectRepository {
                     );
                 }
             }
+            
+            boolean sapProjectsChanged = false;
+            if (sapSharedOR != null) {
+                LinkedHashSet<String> sapMerged = new LinkedHashSet<>();
+                sapMerged.addAll(sapSharedProjectsFromXml);
+                sapMerged.addAll(sapSharedUsageProjects);
+                File sharedRoot = new File(getSharedORRepLocation());
+                File sapMetaFile = new File(sharedRoot, "sapor-projectsdata.yaml");
+                sapMerged.addAll(yamlWriter.readExistingProjects(sapMetaFile));
+                List<String> current = sapSharedOR.getSharedProjects();
+                sapProjectsChanged = current == null || !new LinkedHashSet<>(current).equals(sapMerged);
+                if (sapProjectsChanged) {
+                    sapSharedOR.setSharedProjects(
+                        new ArrayList<>(sapMerged)
+                    );
+                }
+            }
 
             if (useYamlFormat) {
                 File sharedRoot = new File(getSharedORRepLocation());
@@ -289,6 +307,15 @@ public class ObjectRepository {
                         yamlWriter.writeSharedMetadata(mobileSharedOR,sharedRoot);
                     }
                     mobileSharedOR.setSaved(true);
+                }
+
+                if (sapSharedOR != null && (!sapSharedOR.isSaved() || sapProjectsChanged)) {
+                    yamlWriter.writeSapOR(sapSharedOR, sharedRoot);
+                    if (sapSharedOR.getSharedProjects() != null &&
+                        !sapSharedOR.getSharedProjects().isEmpty()) {
+                        yamlWriter.writeSharedMetadata(sapSharedOR,sharedRoot);
+                    }
+                    sapSharedOR.setSaved(true);
                 }
                 saveAsYaml();
                 LOG.info("Saved project ORs in YAML format");
@@ -498,6 +525,14 @@ public class ObjectRepository {
                 mobileSharedOR.setScope(MobileOR.ORScope.SHARED);
                 mobileSharedOR.setName("Shared Mobile Objects");
                 normalizeMobileOR(mobileSharedOR);
+            }
+
+            sapSharedOR = yamlReader.readSapOR(sharedRoot);
+            if (sapSharedOR != null) {
+                sapSharedOR.setObjectRepository(this);
+                sapSharedOR.setScope(SapOR.ORScope.SHARED);
+                sapSharedOR.setName("Shared SAP Objects");
+                normalizeSapOR(sapSharedOR);
             }
         }
     }
@@ -1553,6 +1588,20 @@ public class ObjectRepository {
         if (useYamlFormat) {
             saveSapPageNow(targetPage);
         }
+        
+        // Update all test case references from PROJECT to SHARED scope
+        // Change page reference from unprefixed or "[Project] page" to "[Shared] page"
+        if (sourcePage != null) {
+            String sourcePageName = sourcePage.getName();
+            String targetScopedPage = "[Shared] " + targetPage.getName();
+            
+            // Update unprefixed references: "PageName" -> "[Shared] PageName"
+            sProject.refactorObjectName(sourcePageName, originalName, targetScopedPage, originalName);
+            
+            // Update [Project] prefixed references: "[Project] PageName" -> "[Shared] PageName"
+            sProject.refactorObjectName("[Project] " + sourcePageName, originalName, targetScopedPage, originalName);
+        }
+        
         LOG.info(
             "Moved SAP Object Group '" + originalName +
             "' to SHARED page '" + targetPageName + "'"
@@ -1690,6 +1739,8 @@ public class ObjectRepository {
             webSharedUsageProjects.add(sProject.getName());
         } else if ("MobileOR".equals(orType)) {
             mobileSharedUsageProjects.add(sProject.getName());
+        } else if ("SapOR".equals(orType)) {
+            sapSharedUsageProjects.add(sProject.getName());
         }
     }
     
