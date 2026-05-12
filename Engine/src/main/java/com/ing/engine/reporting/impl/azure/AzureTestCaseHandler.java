@@ -101,6 +101,15 @@ public class AzureTestCaseHandler extends TestCaseHandler implements PrimaryHand
         platform = getWebDriver().getPlatform();
         browserName = getWebDriver().getCurrentBrowser();
     }
+    
+    @Override
+    public void setSapSession(com.ing.engine.drivers.SAPSessionCreation session) {
+        if (session != null) {
+            testCaseData.put(TestCase.B_VERSION, session.getCurrentBrowserVersion());
+            platform = session.getPlatform();
+            browserName = session.getCurrentBrowser();
+        }
+    }
 
     @Override
     public void createReport(RunContext runContext, String runTime) {

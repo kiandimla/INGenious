@@ -70,6 +70,15 @@ public class ExcelTestCaseHandler extends TestCaseHandler implements PrimaryHand
         testCaseData.put(TestCase.PLATFORM, getWebDriver().getPlatform());
         testCaseData.put(TestCase.BROWSER, getWebDriver().getCurrentBrowser());
     }
+    
+    @Override
+    public void setSapSession(com.ing.engine.drivers.SAPSessionCreation session) {
+        if (session != null) {
+            testCaseData.put(TestCase.B_VERSION, session.getCurrentBrowserVersion());
+            testCaseData.put(TestCase.PLATFORM, session.getPlatform());
+            testCaseData.put(TestCase.BROWSER, session.getCurrentBrowser());
+        }
+    }
 
     @Override
     public void createReport(RunContext runContext, String runTime) {
