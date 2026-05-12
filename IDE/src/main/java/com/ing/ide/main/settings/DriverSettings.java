@@ -18,6 +18,7 @@ import java.awt.event.ActionListener;
 import java.awt.event.ItemEvent;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Objects;
@@ -377,9 +378,20 @@ public class DriverSettings extends javax.swing.JFrame {
     }
 
     private List<String> getTotalBrowserList() {
-        List<String> list = PlaywrightDriverFactory.Browser.getValuesAsList();
-        List<String> list2 = settings.getEmulators().getEmulatorNames();
-        list.addAll(list2);
+        List<String> list = new ArrayList<>();
+        
+        // Add Playwright browsers first
+        list.addAll(PlaywrightDriverFactory.Browser.getValuesAsList());
+        
+        // Extract SAP and add it next
+        List<String> emulators = new ArrayList<>(settings.getEmulators().getEmulatorNames());
+        if (emulators.remove("SAP")) {
+            list.add("SAP");
+        }
+        
+        // Add remaining emulators
+        list.addAll(emulators);
+        
         return list;
     }
 
