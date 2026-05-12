@@ -1021,6 +1021,7 @@ public abstract class ObjectTree implements ActionListener {
                 reload();
                 refreshSharedTree();
                 Notification.show("Moved Object '" + newName + "' to Shared OR");
+                promptTestCaseReload();
             }
         }
         if (isMobile) {
@@ -1049,6 +1050,7 @@ public abstract class ObjectTree implements ActionListener {
                 reload();
                 refreshSharedTree();
                 Notification.show("Moved Mobile Object '" + newName + "' to Shared OR");
+                promptTestCaseReload();
             }
         }
         if (isSap) {
@@ -1077,7 +1079,17 @@ public abstract class ObjectTree implements ActionListener {
                 reload();
                 refreshSharedTree();
                 Notification.show("Moved SAP Object '" + newName + "' to Shared OR");
+                promptTestCaseReload();
             }
+        }
+    }
+
+    private void promptTestCaseReload() {
+        try {
+            getTestDesign().getTestCaseComp().reload();
+            Notification.show("Test cases reloaded successfully");
+        } catch (Exception e) {
+            // Silently ignore if no test case is currently open
         }
     }
 
@@ -1095,6 +1107,7 @@ public abstract class ObjectTree implements ActionListener {
                 repo.save();
                 refreshSharedTree();
                 Notification.show( "Moved Page '" + page.getName() + "' to Shared OR");
+                promptTestCaseReload();
             }
         }
         if (isMobile) {
@@ -1105,6 +1118,7 @@ public abstract class ObjectTree implements ActionListener {
                 repo.save();
                 refreshSharedTree();
                 Notification.show("Moved Mobile Page '" + page.getName() + "' to Shared OR");
+                promptTestCaseReload();
             }
         }
         if (isSap) {
@@ -1115,6 +1129,7 @@ public abstract class ObjectTree implements ActionListener {
                 repo.save();
                 refreshSharedTree();
                 Notification.show("Moved SAP Page '" + page.getName() + "' to Shared OR");
+                promptTestCaseReload();
             }
         }
     }
