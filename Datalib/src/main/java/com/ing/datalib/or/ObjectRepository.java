@@ -15,6 +15,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
+import com.ing.datalib.or.sap.ResolvedSapObject;
+import com.ing.datalib.or.sap.SapOR;
+import com.ing.datalib.or.sap.SapORObject;
+import com.ing.datalib.or.sap.SapORPage;
 import com.ing.datalib.or.structureddata.StructuredDataORObject;
 import com.ing.datalib.or.structureddata.StructuredDataORPage;
 import com.ing.datalib.or.structureddata.ResolvedStructuredDataObject;
@@ -36,29 +40,6 @@ import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import com.ing.datalib.component.Project;
-import com.ing.datalib.or.common.ORPageInf;
-import com.ing.datalib.or.common.ObjectGroup;
-import com.ing.datalib.or.mobile.MobileOR;
-import com.ing.datalib.or.mobile.MobileORObject;
-import com.ing.datalib.or.mobile.MobileORPage;
-import com.ing.datalib.or.mobile.ResolvedMobileObject;
-import com.ing.datalib.or.sap.ResolvedSapObject;
-import com.ing.datalib.or.sap.SapOR;
-import com.ing.datalib.or.sap.SapORObject;
-import com.ing.datalib.or.sap.SapORPage;
-import com.ing.datalib.or.structureddata.ResolvedStructuredDataObject;
-import com.ing.datalib.or.structureddata.StructuredData;
-import com.ing.datalib.or.structureddata.StructuredDataORObject;
-import com.ing.datalib.or.structureddata.StructuredDataORPage;
-import com.ing.datalib.or.web.ResolvedWebObject;
-import com.ing.datalib.or.web.WebOR;
-import com.ing.datalib.or.web.WebOR.ORScope;
-import com.ing.datalib.or.web.WebORObject;
-import com.ing.datalib.or.web.WebORPage;
-import com.ing.datalib.or.yaml.YamlORReader;
-import com.ing.datalib.or.yaml.YamlORWriter;
 
 /**
  * Manages all Object Repository types (Web Project OR, Web Shared OR, Mobile OR)
@@ -84,6 +65,7 @@ public class ObjectRepository {
     private final Set<String> mobileSharedUsageProjects = new HashSet<>();
     private List<String> webSharedProjectsFromXml = List.of();
     private List<String> mobileSharedProjectsFromXml = List.of();
+    private List<String> sapSharedProjectsFromXml = List.of();
     
     // YAML support
     private boolean useYamlFormat = true; // Default to YAML for new projects
@@ -183,6 +165,9 @@ public class ObjectRepository {
     }
     public String getStructuredDataORLocation() {
         return sProject.getLocation() + File.separator + "StructuredDataOR.object";
+    }
+    public String getSapORLocation() {
+        return sProject.getLocation() + File.separator + "SapOR.object";
     }
     public String getSharedORLocation() {
         return "Shared" + File.separator + "SharedWebObjects" + File.separator + "SharedOR.object";
@@ -1354,6 +1339,14 @@ public class ObjectRepository {
         return uniqueName;
     }
     
+    /**
+     * Moves a WebOR object from project to shared page.
+     * Actually moves the object (removes from source, adds to target) instead of cloning.
+     *
+     * @param source          resolved web object
+     * @param targetPageName  target page in shared OR
+     * @return original object name if successful, null if object already exists in target
+     */
     public String moveWebObject(ResolvedWebObject source, String targetPageName) {
         if (source == null) return null;
         WebOR sharedOR = getWebSharedOR();
@@ -1363,9 +1356,13 @@ public class ObjectRepository {
         ObjectGroup<WebORObject> originalGroup = source.getGroup();
         if (originalGroup == null) return null;
         String originalName = originalGroup.getName();
+        
+        // Fail if object with same name already exists in target
         if (targetPage.getObjectGroupByName(originalName) != null) {
             return null;
         }
+        
+        // Remove from source page first (actual move!)
         ORPageInf sourcePage = originalGroup.getParent();
         if (sourcePage != null) {
             sourcePage.getObjectGroups().remove(originalGroup);
@@ -1374,12 +1371,28 @@ public class ObjectRepository {
                 saveWebPageNow((WebORPage) sourcePage);
             }
         }
+        
+        // Move the same group to target (not a clone)
         originalGroup.setParent(targetPage);
         targetPage.getObjectGroups().add(originalGroup);
         sharedOR.setSaved(false);
         if (useYamlFormat) {
             saveWebPageNow(targetPage);
         }
+        
+        // Update all test case references from PROJECT to SHARED scope
+        // Change page reference from unprefixed or "[Project] page" to "[Shared] page"
+        if (sourcePage != null) {
+            String sourcePageName = sourcePage.getName();
+            String targetScopedPage = "[Shared] " + targetPage.getName();
+            
+            // Update unprefixed references: "PageName" -> "[Shared] PageName"
+            sProject.refactorObjectName(sourcePageName, originalName, targetScopedPage, originalName);
+            
+            // Update [Project] prefixed references: "[Project] PageName" -> "[Shared] PageName"
+            sProject.refactorObjectName("[Project] " + sourcePageName, originalName, targetScopedPage, originalName);
+        }
+        
         LOG.info(
             "Moved Web Object '" + originalName +
             "' to SHARED page '" + targetPageName + "'"
@@ -1445,6 +1458,13 @@ public class ObjectRepository {
         return uniqueName;
     }
     
+    /**
+     * Moves a MobileOR object from project to shared page.
+     * Actually moves the object (removes from source, adds to target) instead of cloning.
+     * @param source resolved mobile object (from project OR)
+     * @param targetPageName target page name in shared Mobile OR
+     * @return original object name if successful, null if object already exists in target
+     */
     public String moveMobileObject(ResolvedMobileObject source, String targetPageName) {
         if (source == null) return null;
         MobileOR sharedOR = getMobileSharedOR();
@@ -1454,9 +1474,13 @@ public class ObjectRepository {
         ObjectGroup<MobileORObject> originalGroup = source.getGroup();
         if (originalGroup == null) return null;
         String originalName = originalGroup.getName();
+        
+        // Fail if object with same name already exists in target
         if (targetPage.getObjectGroupByName(originalName) != null) {
             return null;
         }
+        
+        // Remove from source page first (actual move!)
         ORPageInf sourcePage = originalGroup.getParent();
         if (sourcePage != null) {
             sourcePage.getObjectGroups().remove(originalGroup);
@@ -1466,12 +1490,28 @@ public class ObjectRepository {
                 saveMobilePageNow((MobileORPage) sourcePage);
             }
         }
+        
+        // Move the same group to target (not a clone)
         originalGroup.setParent(targetPage);
         targetPage.getObjectGroups().add(originalGroup);
         sharedOR.setSaved(false);
         if (useYamlFormat) {
             saveMobilePageNow(targetPage);
         }
+        
+        // Update all test case references from PROJECT to SHARED scope
+        // Change page reference from unprefixed or "[Project] page" to "[Shared] page"
+        if (sourcePage != null) {
+            String sourcePageName = sourcePage.getName();
+            String targetScopedPage = "[Shared] " + targetPage.getName();
+            
+            // Update unprefixed references: "PageName" -> "[Shared] PageName"
+            sProject.refactorObjectName(sourcePageName, originalName, targetScopedPage, originalName);
+            
+            // Update [Project] prefixed references: "[Project] PageName" -> "[Shared] PageName"
+            sProject.refactorObjectName("[Project] " + sourcePageName, originalName, targetScopedPage, originalName);
+        }
+        
         LOG.info(
             "Moved Mobile Object Group '" + originalName +
             "' to SHARED page '" + targetPageName + "'"

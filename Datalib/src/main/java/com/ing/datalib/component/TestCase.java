@@ -4,6 +4,7 @@ package com.ing.datalib.component;
 import com.ing.datalib.component.TestStep.HEADERS;
 import com.ing.datalib.component.utils.FileUtils;
 import com.ing.datalib.component.utils.SaveListener;
+import com.ing.datalib.or.mobile.ResolvedMobileObject;
 import com.ing.datalib.or.web.ResolvedWebObject;
 import com.ing.datalib.or.web.WebOR.ORScope;
 import java.io.File;

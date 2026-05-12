@@ -7,6 +7,7 @@ import com.ing.datalib.or.ObjectRepository;
 import com.ing.datalib.or.common.ORObjectInf;
 import com.ing.datalib.or.common.ORRootInf;
 import com.ing.datalib.or.sap.SapORObject;
+import com.ing.ide.main.mainui.components.testdesign.TestDesign;
 import com.ing.ide.main.mainui.components.testdesign.or.ObjectTree;
 import java.util.List;
 import javax.swing.tree.TreePath;
@@ -44,6 +45,11 @@ public class SapObjectTree extends ObjectTree {
     @Override
     public Project getProject() {
         return oRPanel.getProject();
+    }
+
+    @Override
+    public TestDesign getTestDesign() {
+        return oRPanel.getTestDesign();
     }
 
     @Override

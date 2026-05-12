@@ -14,6 +14,7 @@ import com.ing.datalib.or.mobile.MobileOR;
 import com.ing.datalib.or.mobile.MobileORObject;
 import com.ing.datalib.or.mobile.MobileORPage;
 import com.ing.datalib.or.mobile.ResolvedMobileObject;
+import com.ing.datalib.or.sap.ResolvedSapObject;
 import com.ing.datalib.or.sap.SapOR;
 import com.ing.datalib.or.sap.SapORObject;
 import com.ing.datalib.or.sap.SapORPage;
@@ -42,10 +43,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import com.ing.ide.main.mainui.AppMainFrame;
+import com.ing.ide.main.mainui.components.testdesign.TestDesign;
 import com.ing.ide.main.mainui.components.testdesign.or.clipboard.ORClipboardManager;
 import com.ing.ide.main.mainui.components.testdesign.or.clipboard.ORObjectClipboard;
 import com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileORPanel;
 import com.ing.ide.main.mainui.components.testdesign.or.mobile.MobileObjectTree;
+import com.ing.ide.main.mainui.components.testdesign.or.sap.SapORPanel;
+import com.ing.ide.main.mainui.components.testdesign.or.sap.SapObjectTree;
 import com.ing.ide.main.mainui.components.testdesign.or.web.WebORPanel;
 import com.ing.ide.main.mainui.components.testdesign.or.web.WebObjectTree;
 import java.awt.Toolkit;
@@ -989,6 +993,7 @@ public abstract class ObjectTree implements ActionListener {
         ORRootInf root = getOR();
         boolean isWeb = root instanceof WebOR;
         boolean isMobile = root instanceof MobileOR;
+        boolean isSap = root instanceof SapOR;
         String objectName = obj.getName().toString();
         if (isWeb) {
             ResolvedWebObject resolved =
@@ -1081,6 +1086,7 @@ public abstract class ObjectTree implements ActionListener {
         ORRootInf root = getOR();
         boolean isWeb = root instanceof WebOR;
         boolean isMobile = root instanceof MobileOR;
+        boolean isSap = root instanceof SapOR;
         if (isWeb) {
             String newPageName = repo.copyWebPage(page.getName(), page.getName());
             if (newPageName != null) {
@@ -1101,6 +1107,16 @@ public abstract class ObjectTree implements ActionListener {
                 Notification.show("Moved Mobile Page '" + page.getName() + "' to Shared OR");
             }
         }
+        if (isSap) {
+            String newPageName = repo.copySapPage(page.getName(), page.getName());
+            if (newPageName != null) {
+                pageRemoved(page);
+                page.removeFromParent();
+                repo.save();
+                refreshSharedTree();
+                Notification.show("Moved SAP Page '" + page.getName() + "' to Shared OR");
+            }
+        }
     }
 
     private void refreshSharedTree() {
@@ -1110,6 +1126,10 @@ public abstract class ObjectTree implements ActionListener {
 
         } else if (this instanceof MobileObjectTree) {
             MobileORPanel panel = ((MobileObjectTree) this).getORPanel();
+            panel.getSharedTree().load();
+
+        } else if (this instanceof SapObjectTree) {
+            SapORPanel panel = ((SapObjectTree) this).getORPanel();
             panel.getSharedTree().load();
         }
     }
