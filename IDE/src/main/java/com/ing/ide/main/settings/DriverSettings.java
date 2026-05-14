@@ -558,7 +558,16 @@ public class DriverSettings extends javax.swing.JFrame {
             DefaultTableModel model = (DefaultTableModel) capTable.getModel();
             model.setRowCount(0);
             
-            LinkedProperties properties = settings.getEmulators().defaultEmulatorCap();
+            String emulatorName = browserCombo.getSelectedItem().toString();
+            LinkedProperties properties;
+            
+            // Check if adding SAP browser
+            if ("SAP".equals(emulatorName)) {
+                properties = settings.getEmulators().defaultSAPCapability();
+            } else {
+                properties = settings.getEmulators().defaultEmulatorCap();
+            }
+            
             for (Object key : properties.orderedKeys()) {
                 Object value = properties.get(key);
                 model.addRow(new Object[]{key, value});
