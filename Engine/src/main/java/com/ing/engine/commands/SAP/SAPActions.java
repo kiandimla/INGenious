@@ -6,12 +6,12 @@ import java.util.Map;
 import com.ing.engine.commands.browser.General;
 import com.ing.engine.core.CommandControl;
 import com.ing.engine.drivers.AutomationObject;
-import com.ing.engine.execution.exception.element.ElementException;
-import com.ing.engine.execution.exception.element.ElementException.ExceptionType;
-import com.ing.engine.support.Status;
-import com.ing.engine.support.methodInf.Action;
-import com.ing.engine.support.methodInf.InputType;
-import com.ing.engine.support.methodInf.ObjectType;
+import com.ing.ingenious.api.exception.mobile.ElementException;
+import com.ing.ingenious.api.exception.mobile.ElementException.ExceptionType;
+import com.ing.ingenious.api.status.Status;
+import com.ing.ingenious.api.annotation.Action;
+import com.ing.ingenious.api.types.InputType;
+import com.ing.ingenious.api.types.ObjectType;
 import com.jacob.com.Dispatch;
 import com.jacob.com.Variant;
 

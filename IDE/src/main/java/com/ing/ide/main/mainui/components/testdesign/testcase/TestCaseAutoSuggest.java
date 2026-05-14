@@ -14,6 +14,7 @@ import static com.ing.datalib.component.TestStep.HEADERS.ObjectName;
 import static com.ing.datalib.component.TestStep.HEADERS.Reference;
 import com.ing.datalib.or.structureddata.ResolvedStructuredDataObject;
 import com.ing.datalib.or.mobile.ResolvedMobileObject;
+import com.ing.datalib.or.sap.ResolvedSapObject;
 import com.ing.datalib.or.web.ResolvedWebObject;
 import com.ing.datalib.testdata.model.Record;
 import com.ing.datalib.testdata.model.TestDataModel;
@@ -298,7 +299,7 @@ public class TestCaseAutoSuggest {
 
     class ActionAutoSuggest extends AutoSuggest {
 
-        /**
+         /**
          * Retrieves available actions for the currently selected object in the test design table.
          * <p>
          * Returns action methods appropriate for the object type (Browser, Database, Webservice, etc.)
@@ -335,7 +336,14 @@ public class TestCaseAutoSuggest {
             if (isMobileObject(objectName, pageToken)) {
                 return MethodInfoManager.getMethodListFor(ObjectType.APP);
             }
-
+            
+            if (isStructuredDataObject(objectName, pageToken)) {
+                return MethodInfoManager.getMethodListFor(ObjectType.STRUCTUREDDATA);
+            }
+    
+            if (isSapObject(objectName, pageToken)) {
+                return MethodInfoManager.getMethodListFor(ObjectType.SAP);
+            }
             return new ArrayList<>();
         }
 
@@ -399,6 +407,25 @@ public class TestCaseAutoSuggest {
             ResolvedStructuredDataObject r = (ref != null && ref.name != null && ref.scope != null)
                     ? repo.resolveStructuredDataObject(ref, objectName)
                     : repo.resolveStructuredDataObjectWithScope(pageToken, objectName);
+            return r != null && r.isPresent();
+        }
+
+        /**
+         * Detect SAP objects via SAP resolver (supports scoped refs + shared)
+         * instead of directly accessing getSapOR()/pages.
+         */
+        private boolean isSapObject(String objectName, String pageToken) {
+            if (pageToken == null
+                    || pageToken.isBlank()
+                    || objectName == null
+                    || objectName.isBlank()) {
+                return false;
+            }
+            var repo = sProject.getObjectRepository();
+            ResolvedSapObject.PageRef ref = ResolvedSapObject.PageRef.parse(pageToken);
+            ResolvedSapObject r = (ref != null && ref.name != null && ref.scope != null)
+                    ? repo.resolveSapObject(ref, objectName)
+                    : repo.resolveSapObjectWithScope(pageToken, objectName);
             return r != null && r.isPresent();
         }
 
