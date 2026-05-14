@@ -1100,10 +1100,10 @@ public abstract class ObjectTree implements ActionListener {
         boolean isMobile = root instanceof MobileOR;
         boolean isSap = root instanceof SapOR;
         if (isWeb) {
-            String newPageName = repo.copyWebPage(page.getName(), page.getName());
+            String newPageName = repo.moveWebPage(page.getName(), page.getName());
             if (newPageName != null) {
-                pageRemoved(page);
-                page.removeFromParent();
+                // Move method already removes the page from parent, just reload the tree
+                reload();
                 repo.save();
                 refreshSharedTree();
                 Notification.show( "Moved Page '" + page.getName() + "' to Shared OR");
@@ -1111,10 +1111,10 @@ public abstract class ObjectTree implements ActionListener {
             }
         }
         if (isMobile) {
-            String newPageName = repo.copyMobilePage(page.getName(), page.getName());
+            String newPageName = repo.moveMobilePage(page.getName(), page.getName());
             if (newPageName != null) {
-                pageRemoved(page);
-                page.removeFromParent();
+                // Move method already removes the page from parent, just reload the tree
+                reload();
                 repo.save();
                 refreshSharedTree();
                 Notification.show("Moved Mobile Page '" + page.getName() + "' to Shared OR");
@@ -1122,10 +1122,10 @@ public abstract class ObjectTree implements ActionListener {
             }
         }
         if (isSap) {
-            String newPageName = repo.copySapPage(page.getName(), page.getName());
+            String newPageName = repo.moveSapPage(page.getName(), page.getName());
             if (newPageName != null) {
-                pageRemoved(page);
-                page.removeFromParent();
+                // Move method already removes the page from parent, just reload the tree
+                reload();
                 repo.save();
                 refreshSharedTree();
                 Notification.show("Moved SAP Page '" + page.getName() + "' to Shared OR");
