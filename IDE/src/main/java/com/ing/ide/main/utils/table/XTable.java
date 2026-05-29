@@ -42,6 +42,18 @@ import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableModel;
 
+import java.awt.BasicStroke;
+import java.awt.Cursor;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.function.IntConsumer;
+import java.awt.AlphaComposite;
+
 public class XTable extends JTable {
 
     private boolean inLayout;
@@ -49,6 +61,19 @@ public class XTable extends JTable {
     private SearchRenderer searchRenderer;
 
     private EditHeader editHeader;
+
+    private int hoverInsertRow = -1;
+    private int hoverInsertX = -1;
+
+    private static final int INSERT_HOVER_ZONE = 5;
+    private static final int INSERT_PLUS_SIZE = 18;
+
+    private static final Color INSERT_INDICATOR_COLOR = new Color(255, 98, 0);
+
+    private static final float INSERT_LINE_OPACITY = 0.45f;
+    private static final float INSERT_PLUS_OPACITY = 0.90f;
+
+    private IntConsumer insertRowHandler;
 
     public XTable() {
         init();
@@ -124,6 +149,8 @@ public class XTable extends JTable {
             }
         });
         TableCellDrag.install(this);
+
+        initInsertRowHover();
     }
     
     /**
@@ -300,6 +327,10 @@ public class XTable extends JTable {
             }
         }
         return flag;
+    }
+
+    public void setInsertRowHandler(IntConsumer insertRowHandler) {
+        this.insertRowHandler = insertRowHandler;
     }
 
     public void setActionFor(String value, Action action) {
@@ -485,6 +516,232 @@ public class XTable extends JTable {
             for (int i = 1; i < getRowCount(); i++) {
                 changeSelection(i, colIndex, false, true);
             }
+        }
+    }
+
+    private void initInsertRowHover() {
+        MouseAdapter insertRowMouseAdapter = new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int newHoverInsertRow = getInsertRowForPoint(e.getPoint());
+                int newHoverInsertX = e.getX();
+
+                boolean changed = newHoverInsertRow != hoverInsertRow || newHoverInsertX != hoverInsertX;
+
+                hoverInsertRow = newHoverInsertRow;
+                hoverInsertX = newHoverInsertX;
+
+                if (changed) {
+                    repaint();
+                }
+
+                if (hoverInsertRow != -1 && isPointOnPlus(e.getPoint())) {
+                    setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                } else {
+                    setCursor(Cursor.getDefaultCursor());
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                if (hoverInsertRow != -1 || hoverInsertX != -1) {
+                    hoverInsertRow = -1;
+                    hoverInsertX = -1;
+                    setCursor(Cursor.getDefaultCursor());
+                    repaint();
+                }
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (hoverInsertRow != -1 && isPointOnPlus(e.getPoint())) {
+                    insertRowAtHoverPosition();
+                    e.consume();
+                }
+            }
+        };
+
+        addMouseMotionListener(insertRowMouseAdapter);
+        addMouseListener(insertRowMouseAdapter);
+    }
+
+    private int getInsertRowForPoint(Point point) {
+        if (getRowCount() == 0) {
+            return -1;
+        }
+
+        int row = rowAtPoint(point);
+
+        if (row == -1) {
+            return -1;
+        }
+
+        Rectangle rowBounds = getCellRect(row, 0, true);
+
+        int rowTop = rowBounds.y;
+        int rowBottom = rowBounds.y + rowBounds.height;
+
+        if (Math.abs(point.y - rowTop) <= INSERT_HOVER_ZONE) {
+            return row;
+        }
+
+        if (Math.abs(point.y - rowBottom) <= INSERT_HOVER_ZONE) {
+            return row + 1;
+        }
+
+        return -1;
+    }
+
+    private int getInsertLineY(int insertRow) {
+        if (getRowCount() == 0) {
+            return 0;
+        }
+
+        if (insertRow <= 0) {
+            Rectangle firstRow = getCellRect(0, 0, true);
+            return firstRow.y;
+        }
+
+        if (insertRow >= getRowCount()) {
+            Rectangle lastRow = getCellRect(getRowCount() - 1, 0, true);
+            return lastRow.y + lastRow.height;
+        }
+
+        Rectangle targetRow = getCellRect(insertRow, 0, true);
+        return targetRow.y;
+    }
+
+    private boolean isPointOnPlus(Point point) {
+        if (hoverInsertRow == -1) {
+            return false;
+        }
+
+        Rectangle plusBounds = getPlusBounds(hoverInsertRow);
+        return plusBounds.contains(point);
+    }
+
+    private Rectangle getPlusBounds(int insertRow) {
+        int y = getInsertLineY(insertRow);
+
+        int x = hoverInsertX;
+        if (x < 0) {
+            x = INSERT_PLUS_SIZE;
+        }
+
+        int half = INSERT_PLUS_SIZE / 2;
+
+        x = Math.max(half, Math.min(x, getWidth() - half));
+
+        return new Rectangle(
+                x - half,
+                y - half,
+                INSERT_PLUS_SIZE,
+                INSERT_PLUS_SIZE
+        );
+    }
+
+    private void insertRowAtHoverPosition() {
+        int rowIndex = hoverInsertRow;
+
+        if (isEditing() && getCellEditor() != null) {
+            getCellEditor().stopCellEditing();
+        }
+
+        if (insertRowHandler != null) {
+            insertRowHandler.accept(rowIndex);
+        } else {
+            triggerDefaultInsertRowAction(rowIndex);
+        }
+
+        hoverInsertRow = -1;
+        hoverInsertX = -1;
+        setCursor(Cursor.getDefaultCursor());
+        repaint();
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+
+        if (hoverInsertRow != -1) {
+            paintInsertRowIndicator(g);
+        }
+    }
+
+    private void paintInsertRowIndicator(Graphics g) {
+        Graphics2D g2 = (Graphics2D) g.create();
+
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int y = getInsertLineY(hoverInsertRow);
+
+            Color accentColor = INSERT_INDICATOR_COLOR;
+
+            // Draw semi-transparent horizontal insert line
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, INSERT_LINE_OPACITY));
+            g2.setColor(accentColor);
+            g2.setStroke(new BasicStroke(2f));
+            g2.drawLine(0, y, getWidth(), y);
+
+            Rectangle plusBounds = getPlusBounds(hoverInsertRow);
+
+            // Draw less transparent plus circle
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, INSERT_PLUS_OPACITY));
+            g2.setColor(accentColor);
+            g2.fillOval(
+                    plusBounds.x,
+                    plusBounds.y,
+                    plusBounds.width,
+                    plusBounds.height
+            );
+
+            // Draw white plus icon fully visible
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1.0f));
+            g2.setColor(Color.WHITE);
+            g2.setStroke(new BasicStroke(2f));
+
+            int centerX = plusBounds.x + plusBounds.width / 2;
+            int centerY = plusBounds.y + plusBounds.height / 2;
+
+            g2.drawLine(centerX - 5, centerY, centerX + 5, centerY);
+            g2.drawLine(centerX, centerY - 5, centerX, centerY + 5);
+
+        } finally {
+            g2.dispose();
+        }
+    }
+
+    private void triggerDefaultInsertRowAction(int rowIndex) {
+        int rowCount = getRowCount();
+
+        if (rowCount == 0) {
+            triggerTableAction("Add");
+            return;
+        }
+
+        if (rowIndex >= rowCount) {
+            changeSelection(rowCount - 1, 0, false, false);
+            triggerTableAction("Add");
+            return;
+        }
+
+        int safeRow = Math.max(0, Math.min(rowIndex, rowCount - 1));
+
+        if (getColumnCount() > 0) {
+            changeSelection(safeRow, 0, false, false);
+        }
+
+        triggerTableAction("Insert");
+    }
+    
+    private void triggerTableAction(String actionName) {
+        Action action = getActionMap().get(actionName);
+
+        if (action != null) {
+            action.actionPerformed(
+                    new ActionEvent(this, ActionEvent.ACTION_PERFORMED, actionName)
+            );
         }
     }
     
