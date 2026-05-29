@@ -41,6 +41,7 @@ import javax.swing.JComponent;
 import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.event.ChangeEvent;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -62,6 +63,7 @@ public class XTable extends JTable {
     private EditHeader editHeader;
 
     private int hoverInsertRow = -1;
+    private boolean insertingRow = false;
 
     private static final int INSERT_HOVER_ZONE = 5;
     private static final int INSERT_PLUS_SIZE = 18;
@@ -642,7 +644,17 @@ public class XTable extends JTable {
     }
 
     private void insertRowAtHoverPosition() {
+        if (insertingRow) {
+            return;
+        }
+
         int insertIndex = hoverInsertRow;
+
+        if (insertIndex < 0) {
+            return;
+        }
+
+        insertingRow = true;
 
         int[] selectedRows = getSelectedRows();
         int selectedColumn = getSelectedColumn();
@@ -657,11 +669,16 @@ public class XTable extends JTable {
             triggerDefaultInsertRowAction(insertIndex);
         }
 
-        restoreSelectionAfterInsert(selectedRows, selectedColumn, insertIndex);
-
-        hoverInsertRow = -1;
-        setCursor(Cursor.getDefaultCursor());
-        repaint();
+        SwingUtilities.invokeLater(() -> {
+            try {
+                restoreSelectionAfterInsert(selectedRows, selectedColumn, insertIndex);
+            } finally {
+                hoverInsertRow = -1;
+                insertingRow = false;
+                setCursor(Cursor.getDefaultCursor());
+                repaint();
+            }
+        });
     }
 
     private void restoreSelectionAfterInsert(int[] selectedRows, int selectedColumn, int insertIndex) {
@@ -788,13 +805,11 @@ public class XTable extends JTable {
 
     @Override
     protected void processMouseEvent(MouseEvent e) {
-        if (e.getID() == MouseEvent.MOUSE_PRESSED 
-                || e.getID() == MouseEvent.MOUSE_CLICKED) {
-
-            if (hoverInsertRow != -1 && isPointOnPlus(e.getPoint())) {
+        if (e.getID() == MouseEvent.MOUSE_PRESSED) {
+            if (!insertingRow && hoverInsertRow != -1 && isPointOnPlus(e.getPoint())) {
                 insertRowAtHoverPosition();
                 e.consume();
-                return; 
+                return;
             }
         }
 
