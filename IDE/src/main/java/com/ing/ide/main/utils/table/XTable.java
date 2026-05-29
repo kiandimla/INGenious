@@ -524,7 +524,7 @@ public class XTable extends JTable {
 
     
     // -----------------------------------------------------------------------------
-    // Row insert prompt feature
+    // Add row prompt feature
     // -----------------------------------------------------------------------------
 
     private void initInsertRowHover() {
@@ -817,7 +817,7 @@ public class XTable extends JTable {
     }
 
     // -----------------------------------------------------------------------------
-    // End of row insert prompt feature
+    // End of add row prompt feature
     // -----------------------------------------------------------------------------
     
     public class CustomTableCellEditor extends DefaultCellEditor {
