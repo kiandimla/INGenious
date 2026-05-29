@@ -1,19 +1,25 @@
 package com.ing.ide.main.utils.table;
 
-import com.ing.datalib.undoredo.UndoRedoModel;
-import com.ing.ide.main.Main;
-import com.ing.ide.main.utils.keys.ClipboardKeyAdapter;
-import com.ing.ide.main.utils.keys.Keystroke;
+import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Font;
 import java.awt.FontFormatException;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,16 +29,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.IntConsumer;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultCellEditor;
 import javax.swing.JComponent;
 import javax.swing.JTable;
-import static javax.swing.JTable.AUTO_RESIZE_OFF;
-import static javax.swing.JTable.AUTO_RESIZE_SUBSEQUENT_COLUMNS;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
 import javax.swing.UIManager;
@@ -42,17 +48,10 @@ import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableModel;
 
-import java.awt.BasicStroke;
-import java.awt.Cursor;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.RenderingHints;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.util.function.IntConsumer;
-import java.awt.AlphaComposite;
+import com.ing.datalib.undoredo.UndoRedoModel;
+import com.ing.ide.main.Main;
+import com.ing.ide.main.utils.keys.ClipboardKeyAdapter;
+import com.ing.ide.main.utils.keys.Keystroke;
 
 public class XTable extends JTable {
 
@@ -63,12 +62,11 @@ public class XTable extends JTable {
     private EditHeader editHeader;
 
     private int hoverInsertRow = -1;
-    private int hoverInsertX = -1;
 
     private static final int INSERT_HOVER_ZONE = 5;
     private static final int INSERT_PLUS_SIZE = 18;
 
-    private static final Color INSERT_INDICATOR_COLOR = new Color(255, 98, 0);
+    private static final Color INSERT_INDICATOR_COLOR = Color.decode("#7724FF");
 
     private static final float INSERT_LINE_OPACITY = 0.45f;
     private static final float INSERT_PLUS_OPACITY = 0.90f;
@@ -519,19 +517,16 @@ public class XTable extends JTable {
         }
     }
 
+    // Add row logic starts here 
+
     private void initInsertRowHover() {
         MouseAdapter insertRowMouseAdapter = new MouseAdapter() {
             @Override
             public void mouseMoved(MouseEvent e) {
                 int newHoverInsertRow = getInsertRowForPoint(e.getPoint());
-                int newHoverInsertX = e.getX();
 
-                boolean changed = newHoverInsertRow != hoverInsertRow || newHoverInsertX != hoverInsertX;
-
-                hoverInsertRow = newHoverInsertRow;
-                hoverInsertX = newHoverInsertX;
-
-                if (changed) {
+                if (newHoverInsertRow != hoverInsertRow) {
+                    hoverInsertRow = newHoverInsertRow;
                     repaint();
                 }
 
@@ -544,21 +539,13 @@ public class XTable extends JTable {
 
             @Override
             public void mouseExited(MouseEvent e) {
-                if (hoverInsertRow != -1 || hoverInsertX != -1) {
+                if (hoverInsertRow != -1) {
                     hoverInsertRow = -1;
-                    hoverInsertX = -1;
                     setCursor(Cursor.getDefaultCursor());
                     repaint();
                 }
             }
 
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (hoverInsertRow != -1 && isPointOnPlus(e.getPoint())) {
-                    insertRowAtHoverPosition();
-                    e.consume();
-                }
-            }
         };
 
         addMouseMotionListener(insertRowMouseAdapter);
@@ -616,21 +603,16 @@ public class XTable extends JTable {
             return false;
         }
 
-        Rectangle plusBounds = getPlusBounds(hoverInsertRow);
-        return plusBounds.contains(point);
+        Rectangle hitBounds = getPlusHitBounds(hoverInsertRow);
+        return hitBounds.contains(point);
     }
 
     private Rectangle getPlusBounds(int insertRow) {
         int y = getInsertLineY(insertRow);
 
-        int x = hoverInsertX;
-        if (x < 0) {
-            x = INSERT_PLUS_SIZE;
-        }
+        int x = 16;
 
         int half = INSERT_PLUS_SIZE / 2;
-
-        x = Math.max(half, Math.min(x, getWidth() - half));
 
         return new Rectangle(
                 x - half,
@@ -640,23 +622,76 @@ public class XTable extends JTable {
         );
     }
 
+    private Rectangle getPlusHitBounds(int insertRow) {
+        Rectangle visual = getPlusBounds(insertRow);
+
+        int padding = 6; 
+
+        return new Rectangle(
+                visual.x - padding,
+                visual.y - padding,
+                visual.width + (padding * 2),
+                visual.height + (padding * 2)
+        );
+    }
+
     private void insertRowAtHoverPosition() {
-        int rowIndex = hoverInsertRow;
+        int insertIndex = hoverInsertRow;
+
+        int[] selectedRows = getSelectedRows();
+        int selectedColumn = getSelectedColumn();
 
         if (isEditing() && getCellEditor() != null) {
             getCellEditor().stopCellEditing();
         }
 
         if (insertRowHandler != null) {
-            insertRowHandler.accept(rowIndex);
+            insertRowHandler.accept(insertIndex);
         } else {
-            triggerDefaultInsertRowAction(rowIndex);
+            triggerDefaultInsertRowAction(insertIndex);
         }
 
+        restoreSelectionAfterInsert(selectedRows, selectedColumn, insertIndex);
+
         hoverInsertRow = -1;
-        hoverInsertX = -1;
         setCursor(Cursor.getDefaultCursor());
         repaint();
+    }
+
+    private void restoreSelectionAfterInsert(int[] selectedRows, int selectedColumn, int insertIndex) {
+        clearSelection();
+
+        if (selectedRows == null || selectedRows.length == 0) {
+            return;
+        }
+
+        if (getRowCount() == 0 || getColumnCount() == 0) {
+            return;
+        }
+
+        int safeColumn = selectedColumn >= 0
+                ? Math.min(selectedColumn, getColumnCount() - 1)
+                : 0;
+
+        int leadRow = -1;
+
+        for (int i = 0; i < selectedRows.length; i++) {
+            int restoredRow = selectedRows[i];
+
+            if (insertIndex <= restoredRow) {
+                restoredRow = restoredRow + 1;
+            }
+
+            if (restoredRow >= 0 && restoredRow < getRowCount()) {
+                addRowSelectionInterval(restoredRow, restoredRow);
+                leadRow = restoredRow;
+            }
+        }
+
+        if (leadRow != -1 && safeColumn >= 0 && safeColumn < getColumnCount()) {
+            getSelectionModel().setLeadSelectionIndex(leadRow);
+            getColumnModel().getSelectionModel().setLeadSelectionIndex(safeColumn);
+        }
     }
 
     @Override
@@ -744,6 +779,23 @@ public class XTable extends JTable {
             );
         }
     }
+
+    @Override
+    protected void processMouseEvent(MouseEvent e) {
+        if (e.getID() == MouseEvent.MOUSE_PRESSED 
+                || e.getID() == MouseEvent.MOUSE_CLICKED) {
+
+            if (hoverInsertRow != -1 && isPointOnPlus(e.getPoint())) {
+                insertRowAtHoverPosition();
+                e.consume();
+                return; 
+            }
+        }
+
+        super.processMouseEvent(e);
+    }
+
+    // Add row logic ends here
     
     public class CustomTableCellEditor extends DefaultCellEditor {
 
