@@ -71,6 +71,9 @@ public class XTable extends JTable {
     private static final float INSERT_LINE_OPACITY = 0.45f;
     private static final float INSERT_PLUS_OPACITY = 0.90f;
 
+    private static final int INSERT_PLUS_X = 16;
+    private static final int INSERT_PLUS_HIT_PADDING = 6;
+
     private IntConsumer insertRowHandler;
 
     public XTable() {
@@ -517,7 +520,10 @@ public class XTable extends JTable {
         }
     }
 
-    // Add row logic starts here 
+    
+    // -----------------------------------------------------------------------------
+    // Row insert prompt feature
+    // -----------------------------------------------------------------------------
 
     private void initInsertRowHover() {
         MouseAdapter insertRowMouseAdapter = new MouseAdapter() {
@@ -610,7 +616,7 @@ public class XTable extends JTable {
     private Rectangle getPlusBounds(int insertRow) {
         int y = getInsertLineY(insertRow);
 
-        int x = 16;
+        int x = INSERT_PLUS_X;
 
         int half = INSERT_PLUS_SIZE / 2;
 
@@ -625,7 +631,7 @@ public class XTable extends JTable {
     private Rectangle getPlusHitBounds(int insertRow) {
         Rectangle visual = getPlusBounds(insertRow);
 
-        int padding = 6; 
+        int padding = INSERT_PLUS_HIT_PADDING;
 
         return new Rectangle(
                 visual.x - padding,
@@ -795,7 +801,9 @@ public class XTable extends JTable {
         super.processMouseEvent(e);
     }
 
-    // Add row logic ends here
+    // -----------------------------------------------------------------------------
+    // End of row insert prompt feature
+    // -----------------------------------------------------------------------------
     
     public class CustomTableCellEditor extends DefaultCellEditor {
 
@@ -926,6 +934,3 @@ class SearchRenderer extends DefaultTableCellRenderer {
     }
     
 }
-
-
-
