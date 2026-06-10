@@ -1,141 +1,379 @@
-import yfinance as yf
+import ccxt
 import pandas as pd
+import numpy as np
 import ta
-import matplotlib.pyplot as plt
+from datetime import datetime, timezone
+import time
 
-# =============================
-# DOWNLOAD BTC DATA
-# =============================
+# =====================================================
+# CONFIG
+# =====================================================
 
-df = yf.download(
-    "BTC-USD",
-    start="2020-01-01",
-    interval="1d",
-    auto_adjust=True
-)
+SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+TIMEFRAME = "4h"
+START_DATE = "2020-01-01T00:00:00Z"
 
-close = df["Close"].squeeze()
-high = df["High"].squeeze()
+INITIAL_BALANCE = 1000
+RISK_PER_TRADE = 10          # fixed $10 risk per trade
+ATR_MULTIPLIER = 2.0         # stop loss distance
+FEE_RATE = 0.001             # 0.1% per side estimate
+BREAKOUT_LOOKBACK = 20
 
-# =============================
+exchange = ccxt.binance({
+    "enableRateLimit": True
+})
+
+
+# =====================================================
+# DATA FETCHING
+# =====================================================
+
+def fetch_ohlcv(symbol, timeframe, start_date):
+    since = exchange.parse8601(start_date)
+    all_candles = []
+
+    while True:
+        candles = exchange.fetch_ohlcv(
+            symbol,
+            timeframe=timeframe,
+            since=since,
+            limit=1000
+        )
+
+        if len(candles) == 0:
+            break
+
+        all_candles.extend(candles)
+
+        last_timestamp = candles[-1][0]
+        since = last_timestamp + 1
+
+        print(
+            f"{symbol}: fetched until "
+            f"{datetime.fromtimestamp(last_timestamp / 1000, tz=timezone.utc)}"
+        )
+
+        time.sleep(exchange.rateLimit / 1000)
+
+        # Stop if no new progress
+        if len(candles) < 1000:
+            break
+
+    df = pd.DataFrame(
+        all_candles,
+        columns=["timestamp", "open", "high", "low", "close", "volume"]
+    )
+
+    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    df.set_index("datetime", inplace=True)
+
+    df = df[["open", "high", "low", "close", "volume"]]
+
+    return df
+
+
+# =====================================================
 # INDICATORS
-# =============================
+# =====================================================
 
-df["EMA20"] = ta.trend.ema_indicator(close, window=20)
-df["EMA50"] = ta.trend.ema_indicator(close, window=50)
-df["EMA200"] = ta.trend.ema_indicator(close, window=200)
+def add_indicators(df):
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
 
-# Previous 20-day breakout
-df["HH20"] = high.rolling(20).max().shift(1)
+    df["ema20"] = ta.trend.ema_indicator(close, window=20)
+    df["ema50"] = ta.trend.ema_indicator(close, window=50)
+    df["ema200"] = ta.trend.ema_indicator(close, window=200)
 
-# =============================
-# BACKTEST
-# =============================
+    df["atr"] = ta.volatility.AverageTrueRange(
+        high=high,
+        low=low,
+        close=close,
+        window=14
+    ).average_true_range()
 
-initial_balance = 100000
-balance = initial_balance
+    df["hh20"] = high.rolling(BREAKOUT_LOOKBACK).max().shift(1)
 
-position = 0
-btc_amount = 0
-entry_price = 0
+    return df
 
-equity_curve = []
-trade_count = 0
 
-for i in range(200, len(df)):
+# =====================================================
+# BACKTEST SINGLE SYMBOL
+# =====================================================
 
-    current_close = close.iloc[i]
+def backtest_symbol(symbol, df):
+    df = add_indicators(df.copy())
+    df.dropna(inplace=True)
 
-    ema20 = df["EMA20"].iloc[i]
-    ema50 = df["EMA50"].iloc[i]
-    ema200 = df["EMA200"].iloc[i]
+    balance = INITIAL_BALANCE
 
-    hh20 = df["HH20"].iloc[i]
+    position_open = False
+    entry_price = None
+    entry_time = None
+    stop_loss = None
+    position_size = None
+    entry_fee = None
 
-    # =========================
-    # BUY
-    # =========================
+    trades = []
 
-    if position == 0:
+    for i in range(1, len(df)):
+        row = df.iloc[i]
 
-        if (
-            current_close > ema200 and
-            ema20 > ema50 and
-            current_close > hh20
-        ):
+        current_time = df.index[i]
+        close = row["close"]
+        low = row["low"]
 
-            btc_amount = balance / current_close
+        ema20 = row["ema20"]
+        ema50 = row["ema50"]
+        ema200 = row["ema200"]
+        atr = row["atr"]
+        hh20 = row["hh20"]
 
-            entry_price = current_close
+        # =================================================
+        # ENTRY
+        # =================================================
 
-            position = 1
-            trade_count += 1
-
-            print(
-                f"BUY  {df.index[i].date()} "
-                f"@ {current_close:.2f}"
+        if not position_open:
+            entry_signal = (
+                close > ema200 and
+                ema20 > ema50 and
+                close > hh20
             )
 
-    # =========================
-    # SELL
-    # =========================
+            if entry_signal:
+                entry_price = close
+                entry_time = current_time
 
-    elif position == 1:
+                stop_loss = entry_price - (ATR_MULTIPLIER * atr)
 
-        if current_close < ema20:
+                risk_per_unit = entry_price - stop_loss
 
-            balance = btc_amount * current_close
+                if risk_per_unit <= 0:
+                    continue
 
-            print(
-                f"SELL {df.index[i].date()} "
-                f"@ {current_close:.2f}"
-            )
+                # Position sizing:
+                # If price hits stop, loss should be around $10
+                position_size = RISK_PER_TRADE / risk_per_unit
 
-            position = 0
+                entry_value = position_size * entry_price
+                entry_fee = entry_value * FEE_RATE
 
-    # =========================
-    # EQUITY
-    # =========================
+                position_open = True
 
-    if position == 1:
-        equity = btc_amount * current_close
-    else:
-        equity = balance
+        # =================================================
+        # EXIT
+        # =================================================
 
-    equity_curve.append(equity)
+        else:
+            exit_signal = False
+            exit_reason = None
+            exit_price = None
 
-# =============================
-# RESULTS
-# =============================
+            # Stop loss check
+            if low <= stop_loss:
+                exit_signal = True
+                exit_reason = "Stop Loss"
+                exit_price = stop_loss
 
-final_balance = equity_curve[-1]
+            # Trailing trend exit
+            elif close < ema20:
+                exit_signal = True
+                exit_reason = "Close Below EMA20"
+                exit_price = close
 
-total_return = (
-    (final_balance - initial_balance)
-    / initial_balance
-) * 100
+            if exit_signal:
+                exit_time = current_time
 
-print("\n===== RESULTS =====")
+                gross_pnl = (exit_price - entry_price) * position_size
 
-print(f"Initial Balance: {initial_balance:,.2f}")
-print(f"Final Balance:   {final_balance:,.2f}")
+                exit_value = position_size * exit_price
+                exit_fee = exit_value * FEE_RATE
 
-print(f"Total Return:    {total_return:.2f}%")
-print(f"Trades Taken:    {trade_count}")
+                total_fees = entry_fee + exit_fee
 
-# =============================
-# PLOT
-# =============================
+                net_pnl = gross_pnl - total_fees
 
-plt.figure(figsize=(12,6))
+                balance += net_pnl
 
-plt.plot(equity_curve)
+                r_multiple = net_pnl / RISK_PER_TRADE
 
-plt.title("BTC Trend Breakout Strategy")
+                holding_period = exit_time - entry_time
 
-plt.xlabel("Days")
-plt.ylabel("Portfolio Value")
+                trade = {
+                    "symbol": symbol,
+                    "entry_time": entry_time,
+                    "exit_time": exit_time,
+                    "entry_price": entry_price,
+                    "exit_price": exit_price,
+                    "stop_loss": stop_loss,
+                    "position_size": position_size,
+                    "gross_pnl": gross_pnl,
+                    "fees": total_fees,
+                    "net_pnl": net_pnl,
+                    "r_multiple": r_multiple,
+                    "exit_reason": exit_reason,
+                    "holding_period": holding_period,
+                    "balance_after": balance
+                }
 
-plt.grid(True)
+                trades.append(trade)
 
-plt.show()
+                position_open = False
+                entry_price = None
+                entry_time = None
+                stop_loss = None
+                position_size = None
+                entry_fee = None
+
+    return trades, balance
+
+
+# =====================================================
+# METRICS
+# =====================================================
+
+def calculate_metrics(trades):
+    if len(trades) == 0:
+        return {}
+
+    df_trades = pd.DataFrame(trades)
+
+    wins = df_trades[df_trades["net_pnl"] > 0]
+    losses = df_trades[df_trades["net_pnl"] <= 0]
+
+    total_pnl = df_trades["net_pnl"].sum()
+    win_rate = len(wins) / len(df_trades) * 100
+
+    avg_win = wins["net_pnl"].mean() if len(wins) > 0 else 0
+    avg_loss = losses["net_pnl"].mean() if len(losses) > 0 else 0
+
+    gross_profit = wins["net_pnl"].sum()
+    gross_loss = abs(losses["net_pnl"].sum())
+
+    profit_factor = gross_profit / gross_loss if gross_loss != 0 else np.inf
+
+    avg_r = df_trades["r_multiple"].mean()
+    best_trade = df_trades["net_pnl"].max()
+    worst_trade = df_trades["net_pnl"].min()
+
+    return {
+        "total_trades": len(df_trades),
+        "wins": len(wins),
+        "losses": len(losses),
+        "win_rate": win_rate,
+        "total_pnl": total_pnl,
+        "avg_win": avg_win,
+        "avg_loss": avg_loss,
+        "profit_factor": profit_factor,
+        "avg_r": avg_r,
+        "best_trade": best_trade,
+        "worst_trade": worst_trade
+    }
+
+
+# =====================================================
+# PRINT MATCH HISTORY
+# =====================================================
+
+def print_match_history(trades):
+    print("\n" + "=" * 120)
+    print("MATCH HISTORY")
+    print("=" * 120)
+
+    if len(trades) == 0:
+        print("No completed trades.")
+        return
+
+    for idx, trade in enumerate(trades, start=1):
+        print(f"\nTrade #{idx}")
+        print("-" * 80)
+        print(f"Symbol:        {trade['symbol']}")
+        print(f"Entry Time:    {trade['entry_time']}")
+        print(f"Exit Time:     {trade['exit_time']}")
+        print(f"Holding Time:  {trade['holding_period']}")
+        print(f"Entry Price:   {trade['entry_price']:.4f}")
+        print(f"Exit Price:    {trade['exit_price']:.4f}")
+        print(f"Stop Loss:     {trade['stop_loss']:.4f}")
+        print(f"Position Size: {trade['position_size']:.8f}")
+        print(f"Gross PnL:     ${trade['gross_pnl']:.2f}")
+        print(f"Fees:          ${trade['fees']:.2f}")
+        print(f"Net PnL:       ${trade['net_pnl']:.2f}")
+        print(f"R Multiple:    {trade['r_multiple']:.2f}R")
+        print(f"Exit Reason:   {trade['exit_reason']}")
+        print(f"Balance After: ${trade['balance_after']:.2f}")
+
+
+def print_summary(symbol, trades, final_balance):
+    metrics = calculate_metrics(trades)
+
+    print("\n" + "=" * 80)
+    print(f"SUMMARY: {symbol}")
+    print("=" * 80)
+
+    if not metrics:
+        print("No trades taken.")
+        return
+
+    print(f"Initial Balance: ${INITIAL_BALANCE:.2f}")
+    print(f"Final Balance:   ${final_balance:.2f}")
+    print(f"Total PnL:       ${metrics['total_pnl']:.2f}")
+    print(f"Total Return:    {((final_balance - INITIAL_BALANCE) / INITIAL_BALANCE) * 100:.2f}%")
+    print(f"Trades:          {metrics['total_trades']}")
+    print(f"Wins:            {metrics['wins']}")
+    print(f"Losses:          {metrics['losses']}")
+    print(f"Win Rate:        {metrics['win_rate']:.2f}%")
+    print(f"Average Win:     ${metrics['avg_win']:.2f}")
+    print(f"Average Loss:    ${metrics['avg_loss']:.2f}")
+    print(f"Profit Factor:   {metrics['profit_factor']:.2f}")
+    print(f"Average R:       {metrics['avg_r']:.2f}R")
+    print(f"Best Trade:      ${metrics['best_trade']:.2f}")
+    print(f"Worst Trade:     ${metrics['worst_trade']:.2f}")
+
+
+# =====================================================
+# RUN TESTS
+# =====================================================
+
+all_trades = []
+
+for symbol in SYMBOLS:
+    print("\n" + "#" * 100)
+    print(f"FETCHING DATA FOR {symbol}")
+    print("#" * 100)
+
+    df = fetch_ohlcv(symbol, TIMEFRAME, START_DATE)
+
+    print(f"\nRunning backtest for {symbol}...")
+    trades, final_balance = backtest_symbol(symbol, df)
+
+    print_match_history(trades)
+    print_summary(symbol, trades, final_balance)
+
+    all_trades.extend(trades)
+
+
+# =====================================================
+# PORTFOLIO-WIDE SUMMARY
+# =====================================================
+
+print("\n" + "=" * 100)
+print("PORTFOLIO-WIDE SUMMARY")
+print("=" * 100)
+
+portfolio_metrics = calculate_metrics(all_trades)
+
+if portfolio_metrics:
+    total_portfolio_pnl = portfolio_metrics["total_pnl"]
+
+    print(f"Symbols Tested:       {', '.join(SYMBOLS)}")
+    print(f"Total Trades:         {portfolio_metrics['total_trades']}")
+    print(f"Wins:                 {portfolio_metrics['wins']}")
+    print(f"Losses:               {portfolio_metrics['losses']}")
+    print(f"Win Rate:             {portfolio_metrics['win_rate']:.2f}%")
+    print(f"Total Net PnL:        ${total_portfolio_pnl:.2f}")
+    print(f"Average R:            {portfolio_metrics['avg_r']:.2f}R")
+    print(f"Profit Factor:        {portfolio_metrics['profit_factor']:.2f}")
+    print(f"Best Trade:           ${portfolio_metrics['best_trade']:.2f}")
+    print(f"Worst Trade:          ${portfolio_metrics['worst_trade']:.2f}")
+else:
+    print("No completed trades across portfolio.")
