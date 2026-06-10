@@ -4,24 +4,68 @@ import numpy as np
 import ta
 from datetime import datetime, timezone
 import time
+import math
 
 # =====================================================
 # CONFIG
 # =====================================================
 
 SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
+# Intraday only. No daily candles are used in this script.
 TIMEFRAME = "4h"
+
 START_DATE = "2020-01-01T00:00:00Z"
 
-INITIAL_BALANCE = 1000
-RISK_PER_TRADE = 10          # fixed $10 risk per trade
-ATR_MULTIPLIER = 2.0         # stop loss distance
-FEE_RATE = 0.001             # 0.1% per side estimate
+INITIAL_BALANCE = 1000.0
+
+# Fixed risk model.
+# If the stop is hit, the intended loss is roughly this amount before fees/slippage.
+RISK_PER_TRADE_USD = 10.0
+
+ATR_MULTIPLIER = 2.0
 BREAKOUT_LOOKBACK = 20
+
+FEE_RATE = 0.001          # 0.1% per side
+SLIPPAGE_RATE = 0.0005    # 0.05% assumed slippage per trade side
+
+MAX_OPEN_POSITIONS = 3
+MAX_POSITION_VALUE_PCT = 0.35   # Max 35% of equity allocated to one position
+MIN_NOTIONAL = 10.0             # Minimum trade value in USDT
+
+EXPORT_CSV = True
+PRINT_TRADES = True
 
 exchange = ccxt.binance({
     "enableRateLimit": True
 })
+
+
+# =====================================================
+# TIMEFRAME HELPERS
+# =====================================================
+
+def timeframe_to_timedelta(timeframe: str) -> pd.Timedelta:
+    """
+    Supports intraday candles only.
+    Daily candles are intentionally not supported here.
+    """
+    if timeframe.endswith("m"):
+        return pd.Timedelta(minutes=int(timeframe[:-1]))
+    if timeframe.endswith("h"):
+        return pd.Timedelta(hours=int(timeframe[:-1]))
+
+    raise ValueError(
+        "This script is intended for intraday timeframes only, such as '15m', '1h', or '4h'. "
+        "Daily candles are not used."
+    )
+
+
+def bars_per_year(timeframe: str) -> float:
+    td = timeframe_to_timedelta(timeframe)
+    seconds_per_bar = td.total_seconds()
+    seconds_per_year = 365.25 * 24 * 60 * 60
+    return seconds_per_year / seconds_per_bar
 
 
 # =====================================================
@@ -31,6 +75,10 @@ exchange = ccxt.binance({
 def fetch_ohlcv(symbol, timeframe, start_date):
     since = exchange.parse8601(start_date)
     all_candles = []
+
+    print("\n" + "#" * 100)
+    print(f"FETCHING DATA FOR {symbol}")
+    print("#" * 100)
 
     while True:
         candles = exchange.fetch_ohlcv(
@@ -55,9 +103,11 @@ def fetch_ohlcv(symbol, timeframe, start_date):
 
         time.sleep(exchange.rateLimit / 1000)
 
-        # Stop if no new progress
         if len(candles) < 1000:
             break
+
+    if len(all_candles) == 0:
+        return pd.DataFrame()
 
     df = pd.DataFrame(
         all_candles,
@@ -72,11 +122,55 @@ def fetch_ohlcv(symbol, timeframe, start_date):
     return df
 
 
+def clean_ohlcv(df, symbol, timeframe):
+    if df.empty:
+        print(f"{symbol}: no data returned.")
+        return df
+
+    df = df.copy()
+
+    df = df[~df.index.duplicated(keep="first")]
+    df = df.sort_index()
+
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.dropna(subset=["open", "high", "low", "close", "volume"])
+
+    df = df[
+        (df["open"] > 0) &
+        (df["high"] > 0) &
+        (df["low"] > 0) &
+        (df["close"] > 0)
+    ]
+
+    # Remove possibly incomplete latest candle
+    candle_delta = timeframe_to_timedelta(timeframe)
+    now_utc = pd.Timestamp.now(tz="UTC")
+
+    if len(df) > 0:
+        last_candle_open = df.index[-1]
+        if last_candle_open + candle_delta > now_utc:
+            print(f"{symbol}: dropping incomplete latest candle at {last_candle_open}")
+            df = df.iloc[:-1]
+
+    # Basic missing candle warning
+    if len(df) > 1:
+        expected_delta = candle_delta
+        actual_deltas = df.index.to_series().diff().dropna()
+        missing_gaps = actual_deltas[actual_deltas > expected_delta]
+
+        if len(missing_gaps) > 0:
+            print(f"{symbol}: warning - found {len(missing_gaps)} possible missing candle gaps.")
+
+    return df
+
+
 # =====================================================
 # INDICATORS
 # =====================================================
 
 def add_indicators(df):
+    df = df.copy()
+
     close = df["close"]
     high = df["high"]
     low = df["low"]
@@ -92,192 +186,521 @@ def add_indicators(df):
         window=14
     ).average_true_range()
 
+    # Previous 20-bar high.
+    # Shifted by 1 to prevent current candle high from being used.
     df["hh20"] = high.rolling(BREAKOUT_LOOKBACK).max().shift(1)
+
+    df["entry_signal"] = (
+        (df["close"] > df["ema200"]) &
+        (df["ema20"] > df["ema50"]) &
+        (df["close"] > df["hh20"])
+    )
+
+    # Execute signal on the next candle open.
+    df["entry_signal_prev"] = df["entry_signal"].shift(1)
+    df["atr_prev"] = df["atr"].shift(1)
+
+    df = df.dropna(subset=[
+        "ema20",
+        "ema50",
+        "ema200",
+        "atr",
+        "hh20",
+        "entry_signal_prev",
+        "atr_prev"
+    ])
 
     return df
 
 
 # =====================================================
-# BACKTEST SINGLE SYMBOL
+# PORTFOLIO HELPERS
 # =====================================================
 
-def backtest_symbol(symbol, df):
-    df = add_indicators(df.copy())
-    df.dropna(inplace=True)
+def portfolio_equity(cash, positions, last_prices):
+    equity = cash
 
-    balance = INITIAL_BALANCE
+    for symbol, pos in positions.items():
+        if symbol in last_prices and last_prices[symbol] is not None:
+            equity += pos["position_size"] * last_prices[symbol]
 
-    position_open = False
-    entry_price = None
-    entry_time = None
-    stop_loss = None
-    position_size = None
-    entry_fee = None
+    return equity
 
-    trades = []
 
-    for i in range(1, len(df)):
-        row = df.iloc[i]
+def max_consecutive_losses(trades_df):
+    if trades_df.empty:
+        return 0
 
-        current_time = df.index[i]
-        close = row["close"]
-        low = row["low"]
+    trades_df = trades_df.sort_values("exit_time")
 
-        ema20 = row["ema20"]
-        ema50 = row["ema50"]
-        ema200 = row["ema200"]
-        atr = row["atr"]
-        hh20 = row["hh20"]
+    max_streak = 0
+    current_streak = 0
 
-        # =================================================
-        # ENTRY
-        # =================================================
-
-        if not position_open:
-            entry_signal = (
-                close > ema200 and
-                ema20 > ema50 and
-                close > hh20
-            )
-
-            if entry_signal:
-                entry_price = close
-                entry_time = current_time
-
-                stop_loss = entry_price - (ATR_MULTIPLIER * atr)
-
-                risk_per_unit = entry_price - stop_loss
-
-                if risk_per_unit <= 0:
-                    continue
-
-                # Position sizing:
-                # If price hits stop, loss should be around $10
-                position_size = RISK_PER_TRADE / risk_per_unit
-
-                entry_value = position_size * entry_price
-                entry_fee = entry_value * FEE_RATE
-
-                position_open = True
-
-        # =================================================
-        # EXIT
-        # =================================================
-
+    for pnl in trades_df["net_pnl"]:
+        if pnl <= 0:
+            current_streak += 1
+            max_streak = max(max_streak, current_streak)
         else:
+            current_streak = 0
+
+    return max_streak
+
+
+# =====================================================
+# PORTFOLIO BACKTEST
+# =====================================================
+
+def run_portfolio_backtest(data):
+    """
+    True multi-symbol portfolio backtest.
+
+    - Single cash balance.
+    - Multiple symbols processed chronologically.
+    - Entries use previous candle signal and current candle open.
+    - Stops are checked intrabar using current candle low.
+    - Trend exits use current candle close.
+    - Long-only spot-style accounting.
+    """
+
+    cash = INITIAL_BALANCE
+    positions = {}
+    trades = []
+    equity_records = []
+    last_prices = {}
+
+    all_timestamps = sorted(set().union(*[df.index for df in data.values()]))
+
+    if len(all_timestamps) == 0:
+        return trades, pd.DataFrame(), cash
+
+    for current_time in all_timestamps:
+        current_rows = {}
+
+        for symbol, df in data.items():
+            if current_time in df.index:
+                row = df.loc[current_time]
+                current_rows[symbol] = row
+                last_prices[symbol] = row["close"]
+
+        # =================================================
+        # EXIT LOGIC FIRST
+        # =================================================
+
+        for symbol in list(positions.keys()):
+            if symbol not in current_rows:
+                continue
+
+            row = current_rows[symbol]
+            pos = positions[symbol]
+
             exit_signal = False
             exit_reason = None
-            exit_price = None
+            raw_exit_price = None
 
-            # Stop loss check
-            if low <= stop_loss:
+            # Stop loss check.
+            # If candle opens below stop, assume worse fill at open.
+            if row["low"] <= pos["stop_loss"]:
                 exit_signal = True
                 exit_reason = "Stop Loss"
-                exit_price = stop_loss
 
-            # Trailing trend exit
-            elif close < ema20:
+                if row["open"] < pos["stop_loss"]:
+                    raw_exit_price = row["open"]
+                else:
+                    raw_exit_price = pos["stop_loss"]
+
+            # Trend exit at candle close.
+            elif row["close"] < row["ema20"]:
                 exit_signal = True
                 exit_reason = "Close Below EMA20"
-                exit_price = close
+                raw_exit_price = row["close"]
 
             if exit_signal:
-                exit_time = current_time
+                # Long exit gets negative slippage.
+                exit_price = raw_exit_price * (1 - SLIPPAGE_RATE)
 
-                gross_pnl = (exit_price - entry_price) * position_size
-
+                position_size = pos["position_size"]
                 exit_value = position_size * exit_price
                 exit_fee = exit_value * FEE_RATE
 
-                total_fees = entry_fee + exit_fee
+                cash += exit_value - exit_fee
 
+                gross_pnl = (exit_price - pos["entry_price"]) * position_size
+                total_fees = pos["entry_fee"] + exit_fee
                 net_pnl = gross_pnl - total_fees
 
-                balance += net_pnl
+                actual_risk = pos["actual_cash_risk"]
+                r_multiple = net_pnl / actual_risk if actual_risk > 0 else np.nan
 
-                r_multiple = net_pnl / RISK_PER_TRADE
-
-                holding_period = exit_time - entry_time
+                equity_after = portfolio_equity(cash, positions, last_prices)
 
                 trade = {
                     "symbol": symbol,
-                    "entry_time": entry_time,
-                    "exit_time": exit_time,
-                    "entry_price": entry_price,
+                    "entry_time": pos["entry_time"],
+                    "exit_time": current_time,
+                    "entry_price": pos["entry_price"],
                     "exit_price": exit_price,
-                    "stop_loss": stop_loss,
+                    "stop_loss": pos["stop_loss"],
                     "position_size": position_size,
+                    "entry_value": pos["entry_value"],
+                    "exit_value": exit_value,
                     "gross_pnl": gross_pnl,
+                    "entry_fee": pos["entry_fee"],
+                    "exit_fee": exit_fee,
                     "fees": total_fees,
                     "net_pnl": net_pnl,
+                    "actual_cash_risk": actual_risk,
                     "r_multiple": r_multiple,
                     "exit_reason": exit_reason,
-                    "holding_period": holding_period,
-                    "balance_after": balance
+                    "holding_period": current_time - pos["entry_time"],
+                    "cash_after": cash,
+                    "equity_after": equity_after
                 }
 
                 trades.append(trade)
+                del positions[symbol]
 
-                position_open = False
-                entry_price = None
-                entry_time = None
-                stop_loss = None
-                position_size = None
-                entry_fee = None
+        # =================================================
+        # ENTRY LOGIC SECOND
+        # =================================================
 
-    return trades, balance
+        for symbol, row in current_rows.items():
+            if symbol in positions:
+                continue
+
+            if len(positions) >= MAX_OPEN_POSITIONS:
+                continue
+
+            if row["entry_signal_prev"] != True:
+                continue
+
+            if pd.isna(row["atr_prev"]) or row["atr_prev"] <= 0:
+                continue
+
+            current_equity = portfolio_equity(cash, positions, last_prices)
+
+            if current_equity <= 0 or cash <= 0:
+                continue
+
+            # Enter at next candle open with positive slippage.
+            entry_price = row["open"] * (1 + SLIPPAGE_RATE)
+
+            stop_loss = entry_price - (ATR_MULTIPLIER * row["atr_prev"])
+
+            if stop_loss <= 0:
+                continue
+
+            risk_per_unit = entry_price - stop_loss
+
+            if risk_per_unit <= 0:
+                continue
+
+            requested_risk = RISK_PER_TRADE_USD
+
+            # Risk-based size.
+            size_by_risk = requested_risk / risk_per_unit
+            desired_notional = size_by_risk * entry_price
+
+            # Capital constraints.
+            max_notional_by_cash = cash / (1 + FEE_RATE)
+            max_notional_by_exposure = current_equity * MAX_POSITION_VALUE_PCT
+
+            max_allowed_notional = min(max_notional_by_cash, max_notional_by_exposure)
+
+            entry_value = min(desired_notional, max_allowed_notional)
+
+            if entry_value < MIN_NOTIONAL:
+                continue
+
+            position_size = entry_value / entry_price
+            entry_fee = entry_value * FEE_RATE
+
+            total_cost = entry_value + entry_fee
+
+            if total_cost > cash:
+                continue
+
+            actual_cash_risk = risk_per_unit * position_size
+
+            cash -= total_cost
+
+            positions[symbol] = {
+                "symbol": symbol,
+                "entry_time": current_time,
+                "entry_price": entry_price,
+                "stop_loss": stop_loss,
+                "position_size": position_size,
+                "entry_value": entry_value,
+                "entry_fee": entry_fee,
+                "actual_cash_risk": actual_cash_risk
+            }
+
+        # =================================================
+        # EQUITY RECORD
+        # =================================================
+
+        equity = portfolio_equity(cash, positions, last_prices)
+
+        equity_records.append({
+            "datetime": current_time,
+            "cash": cash,
+            "equity": equity,
+            "open_positions": len(positions)
+        })
+
+    # =====================================================
+    # FORCE CLOSE OPEN POSITIONS AT END
+    # =====================================================
+
+    if len(positions) > 0:
+        print("\nForcing open positions closed at final available close...")
+
+    for symbol in list(positions.keys()):
+        pos = positions[symbol]
+        df = data[symbol]
+
+        final_time = df.index[-1]
+        final_close = df["close"].iloc[-1]
+        exit_price = final_close * (1 - SLIPPAGE_RATE)
+
+        position_size = pos["position_size"]
+        exit_value = position_size * exit_price
+        exit_fee = exit_value * FEE_RATE
+
+        cash += exit_value - exit_fee
+
+        gross_pnl = (exit_price - pos["entry_price"]) * position_size
+        total_fees = pos["entry_fee"] + exit_fee
+        net_pnl = gross_pnl - total_fees
+
+        actual_risk = pos["actual_cash_risk"]
+        r_multiple = net_pnl / actual_risk if actual_risk > 0 else np.nan
+
+        trade = {
+            "symbol": symbol,
+            "entry_time": pos["entry_time"],
+            "exit_time": final_time,
+            "entry_price": pos["entry_price"],
+            "exit_price": exit_price,
+            "stop_loss": pos["stop_loss"],
+            "position_size": position_size,
+            "entry_value": pos["entry_value"],
+            "exit_value": exit_value,
+            "gross_pnl": gross_pnl,
+            "entry_fee": pos["entry_fee"],
+            "exit_fee": exit_fee,
+            "fees": total_fees,
+            "net_pnl": net_pnl,
+            "actual_cash_risk": actual_risk,
+            "r_multiple": r_multiple,
+            "exit_reason": "End Of Backtest",
+            "holding_period": final_time - pos["entry_time"],
+            "cash_after": cash,
+            "equity_after": cash
+        }
+
+        trades.append(trade)
+        del positions[symbol]
+
+    final_timestamp = max([df.index[-1] for df in data.values()])
+    equity_records.append({
+        "datetime": final_timestamp,
+        "cash": cash,
+        "equity": cash,
+        "open_positions": 0
+    })
+
+    equity_curve = pd.DataFrame(equity_records)
+    equity_curve = equity_curve.drop_duplicates(subset=["datetime"], keep="last")
+    equity_curve = equity_curve.sort_values("datetime")
+    equity_curve.set_index("datetime", inplace=True)
+
+    return trades, equity_curve, cash
 
 
 # =====================================================
 # METRICS
 # =====================================================
 
-def calculate_metrics(trades):
+def calculate_metrics(trades, equity_curve):
+    metrics = {}
+
+    if equity_curve.empty:
+        return metrics
+
+    start_equity = INITIAL_BALANCE
+    final_equity = equity_curve["equity"].iloc[-1]
+
+    total_return = (final_equity / start_equity) - 1
+
+    running_max = equity_curve["equity"].cummax()
+    drawdown = (equity_curve["equity"] / running_max) - 1
+    max_drawdown = drawdown.min()
+
+    returns = equity_curve["equity"].pct_change().replace([np.inf, -np.inf], np.nan).dropna()
+
+    annualization = bars_per_year(TIMEFRAME)
+
+    if len(returns) > 1 and returns.std() > 0:
+        sharpe = (returns.mean() / returns.std()) * math.sqrt(annualization)
+    else:
+        sharpe = np.nan
+
+    downside_returns = returns[returns < 0]
+
+    if len(downside_returns) > 1 and downside_returns.std() > 0:
+        sortino = (returns.mean() / downside_returns.std()) * math.sqrt(annualization)
+    else:
+        sortino = np.nan
+
+    start_date = equity_curve.index[0]
+    end_date = equity_curve.index[-1]
+    test_days = (end_date - start_date).days
+
+    if test_days > 0 and final_equity > 0:
+        cagr = (final_equity / start_equity) ** (365.25 / test_days) - 1
+    else:
+        cagr = np.nan
+
+    calmar = cagr / abs(max_drawdown) if max_drawdown < 0 and not pd.isna(cagr) else np.nan
+
+    exposure = equity_curve["open_positions"].gt(0).mean()
+
+    metrics.update({
+        "initial_balance": start_equity,
+        "final_equity": final_equity,
+        "total_return_pct": total_return * 100,
+        "cagr_pct": cagr * 100 if not pd.isna(cagr) else np.nan,
+        "max_drawdown_pct": max_drawdown * 100,
+        "sharpe_4h": sharpe,
+        "sortino_4h": sortino,
+        "calmar": calmar,
+        "exposure_pct": exposure * 100,
+        "test_start": start_date,
+        "test_end": end_date,
+        "test_days": test_days
+    })
+
     if len(trades) == 0:
-        return {}
+        metrics.update({
+            "total_trades": 0
+        })
+        return metrics
 
-    df_trades = pd.DataFrame(trades)
+    trades_df = pd.DataFrame(trades)
 
-    wins = df_trades[df_trades["net_pnl"] > 0]
-    losses = df_trades[df_trades["net_pnl"] <= 0]
-
-    total_pnl = df_trades["net_pnl"].sum()
-    win_rate = len(wins) / len(df_trades) * 100
-
-    avg_win = wins["net_pnl"].mean() if len(wins) > 0 else 0
-    avg_loss = losses["net_pnl"].mean() if len(losses) > 0 else 0
+    wins = trades_df[trades_df["net_pnl"] > 0]
+    losses = trades_df[trades_df["net_pnl"] <= 0]
 
     gross_profit = wins["net_pnl"].sum()
     gross_loss = abs(losses["net_pnl"].sum())
 
-    profit_factor = gross_profit / gross_loss if gross_loss != 0 else np.inf
+    profit_factor = gross_profit / gross_loss if gross_loss > 0 else np.inf
 
-    avg_r = df_trades["r_multiple"].mean()
-    best_trade = df_trades["net_pnl"].max()
-    worst_trade = df_trades["net_pnl"].min()
+    avg_win = wins["net_pnl"].mean() if len(wins) > 0 else 0
+    avg_loss = losses["net_pnl"].mean() if len(losses) > 0 else 0
 
-    return {
-        "total_trades": len(df_trades),
+    win_rate = len(wins) / len(trades_df)
+
+    expectancy = trades_df["net_pnl"].mean()
+
+    avg_r = trades_df["r_multiple"].mean()
+    median_r = trades_df["r_multiple"].median()
+
+    payoff_ratio = avg_win / abs(avg_loss) if avg_loss < 0 else np.inf
+
+    max_loss_streak = max_consecutive_losses(trades_df)
+
+    metrics.update({
+        "total_trades": len(trades_df),
         "wins": len(wins),
         "losses": len(losses),
-        "win_rate": win_rate,
-        "total_pnl": total_pnl,
+        "win_rate_pct": win_rate * 100,
+        "gross_profit": gross_profit,
+        "gross_loss": gross_loss,
+        "total_net_pnl": trades_df["net_pnl"].sum(),
         "avg_win": avg_win,
         "avg_loss": avg_loss,
+        "expectancy": expectancy,
         "profit_factor": profit_factor,
+        "payoff_ratio": payoff_ratio,
         "avg_r": avg_r,
-        "best_trade": best_trade,
-        "worst_trade": worst_trade
+        "median_r": median_r,
+        "best_trade": trades_df["net_pnl"].max(),
+        "worst_trade": trades_df["net_pnl"].min(),
+        "max_consecutive_losses": max_loss_streak,
+        "avg_holding_period": trades_df["holding_period"].mean()
+    })
+
+    return metrics
+
+
+# =====================================================
+# BENCHMARK
+# =====================================================
+
+def calculate_equal_weight_buy_hold(data):
+    """
+    Simple equal-weight buy-and-hold benchmark using the same intraday data.
+    No daily candles and no daily resampling.
+    """
+
+    if len(data) == 0:
+        return None
+
+    common_start = max(df.index.min() for df in data.values())
+    common_end = min(df.index.max() for df in data.values())
+
+    if common_start >= common_end:
+        return None
+
+    allocation = INITIAL_BALANCE / len(data)
+    final_value = 0.0
+
+    details = []
+
+    for symbol, df in data.items():
+        first_row = df[df.index >= common_start].iloc[0]
+        last_row = df[df.index <= common_end].iloc[-1]
+
+        entry_price = first_row["close"] * (1 + SLIPPAGE_RATE)
+        exit_price = last_row["close"] * (1 - SLIPPAGE_RATE)
+
+        # Allocation includes entry fee.
+        quantity = allocation / (entry_price * (1 + FEE_RATE))
+
+        exit_value = quantity * exit_price
+        exit_fee = exit_value * FEE_RATE
+        final_symbol_value = exit_value - exit_fee
+
+        final_value += final_symbol_value
+
+        details.append({
+            "symbol": symbol,
+            "entry_price": entry_price,
+            "exit_price": exit_price,
+            "quantity": quantity,
+            "start_value": allocation,
+            "final_value": final_symbol_value,
+            "return_pct": ((final_symbol_value / allocation) - 1) * 100
+        })
+
+    return {
+        "start": common_start,
+        "end": common_end,
+        "initial_balance": INITIAL_BALANCE,
+        "final_value": final_value,
+        "return_pct": ((final_value / INITIAL_BALANCE) - 1) * 100,
+        "details": details
     }
 
 
 # =====================================================
-# PRINT MATCH HISTORY
+# PRINTING
 # =====================================================
 
-def print_match_history(trades):
+def print_trade_history(trades):
     print("\n" + "=" * 120)
-    print("MATCH HISTORY")
+    print("TRADE HISTORY")
     print("=" * 120)
 
     if len(trades) == 0:
@@ -287,93 +710,155 @@ def print_match_history(trades):
     for idx, trade in enumerate(trades, start=1):
         print(f"\nTrade #{idx}")
         print("-" * 80)
-        print(f"Symbol:        {trade['symbol']}")
-        print(f"Entry Time:    {trade['entry_time']}")
-        print(f"Exit Time:     {trade['exit_time']}")
-        print(f"Holding Time:  {trade['holding_period']}")
-        print(f"Entry Price:   {trade['entry_price']:.4f}")
-        print(f"Exit Price:    {trade['exit_price']:.4f}")
-        print(f"Stop Loss:     {trade['stop_loss']:.4f}")
-        print(f"Position Size: {trade['position_size']:.8f}")
-        print(f"Gross PnL:     ${trade['gross_pnl']:.2f}")
-        print(f"Fees:          ${trade['fees']:.2f}")
-        print(f"Net PnL:       ${trade['net_pnl']:.2f}")
-        print(f"R Multiple:    {trade['r_multiple']:.2f}R")
-        print(f"Exit Reason:   {trade['exit_reason']}")
-        print(f"Balance After: ${trade['balance_after']:.2f}")
+        print(f"Symbol:             {trade['symbol']}")
+        print(f"Entry Time:         {trade['entry_time']}")
+        print(f"Exit Time:          {trade['exit_time']}")
+        print(f"Holding Time:       {trade['holding_period']}")
+        print(f"Entry Price:        {trade['entry_price']:.4f}")
+        print(f"Exit Price:         {trade['exit_price']:.4f}")
+        print(f"Stop Loss:          {trade['stop_loss']:.4f}")
+        print(f"Position Size:      {trade['position_size']:.8f}")
+        print(f"Entry Value:        ${trade['entry_value']:.2f}")
+        print(f"Exit Value:         ${trade['exit_value']:.2f}")
+        print(f"Gross PnL:          ${trade['gross_pnl']:.2f}")
+        print(f"Fees:               ${trade['fees']:.2f}")
+        print(f"Net PnL:            ${trade['net_pnl']:.2f}")
+        print(f"Actual Cash Risk:   ${trade['actual_cash_risk']:.2f}")
+        print(f"R Multiple:         {trade['r_multiple']:.2f}R")
+        print(f"Exit Reason:        {trade['exit_reason']}")
+        print(f"Cash After:         ${trade['cash_after']:.2f}")
+        print(f"Equity After:       ${trade['equity_after']:.2f}")
 
 
-def print_summary(symbol, trades, final_balance):
-    metrics = calculate_metrics(trades)
-
-    print("\n" + "=" * 80)
-    print(f"SUMMARY: {symbol}")
-    print("=" * 80)
+def print_summary(metrics):
+    print("\n" + "=" * 100)
+    print("PORTFOLIO BACKTEST SUMMARY")
+    print("=" * 100)
 
     if not metrics:
-        print("No trades taken.")
+        print("No metrics available.")
         return
 
-    print(f"Initial Balance: ${INITIAL_BALANCE:.2f}")
-    print(f"Final Balance:   ${final_balance:.2f}")
-    print(f"Total PnL:       ${metrics['total_pnl']:.2f}")
-    print(f"Total Return:    {((final_balance - INITIAL_BALANCE) / INITIAL_BALANCE) * 100:.2f}%")
-    print(f"Trades:          {metrics['total_trades']}")
-    print(f"Wins:            {metrics['wins']}")
-    print(f"Losses:          {metrics['losses']}")
-    print(f"Win Rate:        {metrics['win_rate']:.2f}%")
-    print(f"Average Win:     ${metrics['avg_win']:.2f}")
-    print(f"Average Loss:    ${metrics['avg_loss']:.2f}")
-    print(f"Profit Factor:   {metrics['profit_factor']:.2f}")
-    print(f"Average R:       {metrics['avg_r']:.2f}R")
-    print(f"Best Trade:      ${metrics['best_trade']:.2f}")
-    print(f"Worst Trade:     ${metrics['worst_trade']:.2f}")
+    print(f"Symbols Tested:             {', '.join(SYMBOLS)}")
+    print(f"Timeframe:                  {TIMEFRAME}")
+    print(f"Test Start:                 {metrics['test_start']}")
+    print(f"Test End:                   {metrics['test_end']}")
+    print(f"Test Days:                  {metrics['test_days']}")
+
+    print("\n--- Equity ---")
+    print(f"Initial Balance:            ${metrics['initial_balance']:.2f}")
+    print(f"Final Equity:               ${metrics['final_equity']:.2f}")
+    print(f"Total Return:               {metrics['total_return_pct']:.2f}%")
+    print(f"CAGR:                       {metrics['cagr_pct']:.2f}%")
+    print(f"Max Drawdown:               {metrics['max_drawdown_pct']:.2f}%")
+    print(f"Calmar Ratio:               {metrics['calmar']:.2f}")
+    print(f"Exposure:                   {metrics['exposure_pct']:.2f}%")
+
+    print("\n--- Risk-Adjusted Performance ---")
+    print(f"Sharpe, based on 4h bars:   {metrics['sharpe_4h']:.2f}")
+    print(f"Sortino, based on 4h bars:  {metrics['sortino_4h']:.2f}")
+
+    print("\n--- Trades ---")
+    print(f"Total Trades:               {metrics.get('total_trades', 0)}")
+
+    if metrics.get("total_trades", 0) == 0:
+        return
+
+    print(f"Wins:                       {metrics['wins']}")
+    print(f"Losses:                     {metrics['losses']}")
+    print(f"Win Rate:                   {metrics['win_rate_pct']:.2f}%")
+    print(f"Gross Profit:               ${metrics['gross_profit']:.2f}")
+    print(f"Gross Loss:                 ${metrics['gross_loss']:.2f}")
+    print(f"Total Net PnL:              ${metrics['total_net_pnl']:.2f}")
+    print(f"Average Win:                ${metrics['avg_win']:.2f}")
+    print(f"Average Loss:               ${metrics['avg_loss']:.2f}")
+    print(f"Expectancy Per Trade:       ${metrics['expectancy']:.2f}")
+    print(f"Profit Factor:              {metrics['profit_factor']:.2f}")
+    print(f"Payoff Ratio:               {metrics['payoff_ratio']:.2f}")
+    print(f"Average R:                  {metrics['avg_r']:.2f}R")
+    print(f"Median R:                   {metrics['median_r']:.2f}R")
+    print(f"Best Trade:                 ${metrics['best_trade']:.2f}")
+    print(f"Worst Trade:                ${metrics['worst_trade']:.2f}")
+    print(f"Max Consecutive Losses:     {metrics['max_consecutive_losses']}")
+    print(f"Average Holding Period:     {metrics['avg_holding_period']}")
+
+
+def print_benchmark(benchmark):
+    print("\n" + "=" * 100)
+    print("EQUAL-WEIGHT BUY-AND-HOLD BENCHMARK")
+    print("=" * 100)
+
+    if benchmark is None:
+        print("Benchmark unavailable.")
+        return
+
+    print(f"Benchmark Start:       {benchmark['start']}")
+    print(f"Benchmark End:         {benchmark['end']}")
+    print(f"Initial Balance:       ${benchmark['initial_balance']:.2f}")
+    print(f"Final Value:           ${benchmark['final_value']:.2f}")
+    print(f"Benchmark Return:      {benchmark['return_pct']:.2f}%")
+
+    print("\nPer-symbol benchmark:")
+    for item in benchmark["details"]:
+        print(
+            f"{item['symbol']}: "
+            f"Start ${item['start_value']:.2f} -> "
+            f"Final ${item['final_value']:.2f} "
+            f"({item['return_pct']:.2f}%)"
+        )
 
 
 # =====================================================
-# RUN TESTS
+# MAIN
 # =====================================================
 
-all_trades = []
+def main():
+    data = {}
 
-for symbol in SYMBOLS:
-    print("\n" + "#" * 100)
-    print(f"FETCHING DATA FOR {symbol}")
-    print("#" * 100)
+    for symbol in SYMBOLS:
+        df = fetch_ohlcv(symbol, TIMEFRAME, START_DATE)
+        df = clean_ohlcv(df, symbol, TIMEFRAME)
 
-    df = fetch_ohlcv(symbol, TIMEFRAME, START_DATE)
+        if df.empty:
+            print(f"{symbol}: skipped because no usable data was found.")
+            continue
 
-    print(f"\nRunning backtest for {symbol}...")
-    trades, final_balance = backtest_symbol(symbol, df)
+        df = add_indicators(df)
 
-    print_match_history(trades)
-    print_summary(symbol, trades, final_balance)
+        if df.empty:
+            print(f"{symbol}: skipped because not enough data for indicators.")
+            continue
 
-    all_trades.extend(trades)
+        data[symbol] = df
+
+        print(f"{symbol}: ready with {len(df)} candles from {df.index[0]} to {df.index[-1]}")
+
+    if len(data) == 0:
+        print("No usable data. Backtest stopped.")
+        return
+
+    trades, equity_curve, final_cash = run_portfolio_backtest(data)
+
+    metrics = calculate_metrics(trades, equity_curve)
+    benchmark = calculate_equal_weight_buy_hold(data)
+
+    if PRINT_TRADES:
+        print_trade_history(trades)
+
+    print_summary(metrics)
+    print_benchmark(benchmark)
+
+    if EXPORT_CSV:
+        trades_df = pd.DataFrame(trades)
+
+        if not trades_df.empty:
+            trades_df.to_csv("trades.csv", index=False)
+            print("\nSaved trades to trades.csv")
+
+        if not equity_curve.empty:
+            equity_curve.to_csv("equity_curve.csv")
+            print("Saved equity curve to equity_curve.csv")
 
 
-# =====================================================
-# PORTFOLIO-WIDE SUMMARY
-# =====================================================
-
-print("\n" + "=" * 100)
-print("PORTFOLIO-WIDE SUMMARY")
-print("=" * 100)
-
-portfolio_metrics = calculate_metrics(all_trades)
-
-if portfolio_metrics:
-    total_portfolio_pnl = portfolio_metrics["total_pnl"]
-
-    print(f"Symbols Tested:       {', '.join(SYMBOLS)}")
-    print(f"Total Trades:         {portfolio_metrics['total_trades']}")
-    print(f"Wins:                 {portfolio_metrics['wins']}")
-    print(f"Losses:               {portfolio_metrics['losses']}")
-    print(f"Win Rate:             {portfolio_metrics['win_rate']:.2f}%")
-    print(f"Total Net PnL:        ${total_portfolio_pnl:.2f}")
-    print(f"Average R:            {portfolio_metrics['avg_r']:.2f}R")
-    print(f"Profit Factor:        {portfolio_metrics['profit_factor']:.2f}")
-    print(f"Best Trade:           ${portfolio_metrics['best_trade']:.2f}")
-    print(f"Worst Trade:          ${portfolio_metrics['worst_trade']:.2f}")
-else:
-    print("No completed trades across portfolio.")
+if __name__ == "__main__":
+    main()
