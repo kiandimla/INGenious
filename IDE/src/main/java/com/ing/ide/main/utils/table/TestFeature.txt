@@ -1,11 +1,10 @@
 import yfinance as yf
 import pandas as pd
-import numpy as np
 import ta
 import matplotlib.pyplot as plt
 
 # =========================
-# Download BTC data
+# DOWNLOAD DATA
 # =========================
 
 df = yf.download(
@@ -15,34 +14,22 @@ df = yf.download(
     auto_adjust=True
 )
 
-# Convert to proper Series
+# Fix dimensions
 close = df["Close"].squeeze()
 high = df["High"].squeeze()
 low = df["Low"].squeeze()
 
 # =========================
-# Indicators
+# INDICATORS
 # =========================
 
+df["EMA20"] = ta.trend.ema_indicator(close, window=20)
 df["EMA200"] = ta.trend.ema_indicator(close, window=200)
 
 df["RSI"] = ta.momentum.rsi(close, window=14)
 
-macd = ta.trend.MACD(close)
-
-df["MACD_HIST"] = macd.macd_diff()
-
-atr = ta.volatility.AverageTrueRange(
-    high,
-    low,
-    close,
-    window=14
-)
-
-df["ATR"] = atr.average_true_range()
-
 # =========================
-# Backtest
+# BACKTEST
 # =========================
 
 initial_balance = 100000
@@ -52,87 +39,83 @@ position = 0
 entry_price = 0
 btc_amount = 0
 
-risk_per_trade = 0.02
-
 equity_curve = []
+
+trade_count = 0
 
 for i in range(200, len(df)):
 
     current_close = close.iloc[i]
-    ema200 = df["EMA200"].iloc[i]
+    prev_rsi = df["RSI"].iloc[i - 1]
+
     rsi = df["RSI"].iloc[i]
-    macd_hist = df["MACD_HIST"].iloc[i]
-    current_atr = df["ATR"].iloc[i]
+
+    ema20 = df["EMA20"].iloc[i]
+    ema200 = df["EMA200"].iloc[i]
 
     # =====================
-    # ENTRY
+    # BUY
     # =====================
 
     if position == 0:
 
+        rsi_cross = prev_rsi < 40 and rsi > 40
+
         if (
             current_close > ema200 and
-            rsi < 35 and
-            macd_hist > 0
+            current_close > ema20 and
+            rsi_cross
         ):
 
-            stop_loss = current_close - (2 * current_atr)
-
-            risk_amount = balance * risk_per_trade
-
-            position_size = risk_amount / (
-                current_close - stop_loss
-            )
-
-            btc_amount = position_size
+            btc_amount = balance / current_close
 
             entry_price = current_close
 
             position = 1
 
-            print(f"BUY  {df.index[i].date()} @ {current_close:.2f}")
+            trade_count += 1
+
+            print(
+                f"BUY  {df.index[i].date()} "
+                f"@ {current_close:.2f}"
+            )
 
     # =====================
-    # EXIT
+    # SELL
     # =====================
 
     elif position == 1:
 
-        stop_loss = entry_price - (2 * current_atr)
+        stop_loss = entry_price * 0.92
 
         if (
-            rsi > 65 or
-            current_close < stop_loss or
-            current_close < ema200
+            rsi > 70 or
+            current_close < ema20 or
+            current_close < stop_loss
         ):
 
-            pnl = (
-                current_close - entry_price
-            ) * btc_amount
-
-            balance += pnl
+            balance = btc_amount * current_close
 
             print(
-                f"SELL {df.index[i].date()} @ "
-                f"{current_close:.2f} | "
-                f"PnL: {pnl:.2f}"
+                f"SELL {df.index[i].date()} "
+                f"@ {current_close:.2f}"
             )
 
             position = 0
 
+    # =====================
+    # EQUITY CURVE
+    # =====================
+
     current_equity = balance
 
     if position == 1:
-        unrealized = (
-            current_close - entry_price
-        ) * btc_amount
-
-        current_equity += unrealized
+        current_equity = btc_amount * current_close
 
     equity_curve.append(current_equity)
 
 # =========================
-# Results
+# FINAL RESULTS
 # =========================
 
 total_return = (
@@ -141,18 +124,23 @@ total_return = (
 ) * 100
 
 print("\n===== RESULTS =====")
-print(f"Initial: {initial_balance:,.2f}")
-print(f"Final:   {equity_curve[-1]:,.2f}")
-print(f"Return:  {total_return:.2f}%")
+print(f"Initial Balance: {initial_balance:,.2f}")
+print(f"Final Balance:   {equity_curve[-1]:,.2f}")
+print(f"Total Return:    {total_return:.2f}%")
+print(f"Trades Taken:    {trade_count}")
 
 # =========================
-# Plot
+# PLOT
 # =========================
 
 plt.figure(figsize=(12,6))
 plt.plot(equity_curve)
-plt.title("BTC Swing Strategy Equity Curve")
-plt.xlabel("Time")
-plt.ylabel("Balance")
+
+plt.title("BTC Swing Trading Equity Curve")
+
+plt.xlabel("Days")
+plt.ylabel("Portfolio Value")
+
 plt.grid(True)
+
 plt.show()
