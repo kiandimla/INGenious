@@ -3,9 +3,9 @@ import pandas as pd
 import ta
 import matplotlib.pyplot as plt
 
-# =========================
-# DOWNLOAD DATA
-# =========================
+# =============================
+# DOWNLOAD BTC DATA
+# =============================
 
 df = yf.download(
     "BTC-USD",
@@ -14,57 +14,54 @@ df = yf.download(
     auto_adjust=True
 )
 
-# Fix dimensions
 close = df["Close"].squeeze()
 high = df["High"].squeeze()
-low = df["Low"].squeeze()
 
-# =========================
+# =============================
 # INDICATORS
-# =========================
+# =============================
 
 df["EMA20"] = ta.trend.ema_indicator(close, window=20)
+df["EMA50"] = ta.trend.ema_indicator(close, window=50)
 df["EMA200"] = ta.trend.ema_indicator(close, window=200)
 
-df["RSI"] = ta.momentum.rsi(close, window=14)
+# Previous 20-day breakout
+df["HH20"] = high.rolling(20).max().shift(1)
 
-# =========================
+# =============================
 # BACKTEST
-# =========================
+# =============================
 
 initial_balance = 100000
 balance = initial_balance
 
 position = 0
-entry_price = 0
 btc_amount = 0
+entry_price = 0
 
 equity_curve = []
-
 trade_count = 0
 
 for i in range(200, len(df)):
 
     current_close = close.iloc[i]
-    prev_rsi = df["RSI"].iloc[i - 1]
-
-    rsi = df["RSI"].iloc[i]
 
     ema20 = df["EMA20"].iloc[i]
+    ema50 = df["EMA50"].iloc[i]
     ema200 = df["EMA200"].iloc[i]
 
-    # =====================
+    hh20 = df["HH20"].iloc[i]
+
+    # =========================
     # BUY
-    # =====================
+    # =========================
 
     if position == 0:
 
-        rsi_cross = prev_rsi < 40 and rsi > 40
-
         if (
             current_close > ema200 and
-            current_close > ema20 and
-            rsi_cross
+            ema20 > ema50 and
+            current_close > hh20
         ):
 
             btc_amount = balance / current_close
@@ -72,7 +69,6 @@ for i in range(200, len(df)):
             entry_price = current_close
 
             position = 1
-
             trade_count += 1
 
             print(
@@ -80,19 +76,13 @@ for i in range(200, len(df)):
                 f"@ {current_close:.2f}"
             )
 
-    # =====================
+    # =========================
     # SELL
-    # =====================
+    # =========================
 
     elif position == 1:
 
-        stop_loss = entry_price * 0.92
-
-        if (
-            rsi > 70 or
-            current_close < ema20 or
-            current_close < stop_loss
-        ):
+        if current_close < ema20:
 
             balance = btc_amount * current_close
 
@@ -103,40 +93,45 @@ for i in range(200, len(df)):
 
             position = 0
 
-    # =====================
-    # EQUITY CURVE
-    # =====================
-
-    current_equity = balance
+    # =========================
+    # EQUITY
+    # =========================
 
     if position == 1:
-        current_equity = btc_amount * current_close
+        equity = btc_amount * current_close
+    else:
+        equity = balance
 
-    equity_curve.append(current_equity)
+    equity_curve.append(equity)
 
-# =========================
-# FINAL RESULTS
-# =========================
+# =============================
+# RESULTS
+# =============================
+
+final_balance = equity_curve[-1]
 
 total_return = (
-    (equity_curve[-1] - initial_balance)
+    (final_balance - initial_balance)
     / initial_balance
 ) * 100
 
 print("\n===== RESULTS =====")
+
 print(f"Initial Balance: {initial_balance:,.2f}")
-print(f"Final Balance:   {equity_curve[-1]:,.2f}")
+print(f"Final Balance:   {final_balance:,.2f}")
+
 print(f"Total Return:    {total_return:.2f}%")
 print(f"Trades Taken:    {trade_count}")
 
-# =========================
+# =============================
 # PLOT
-# =========================
+# =============================
 
 plt.figure(figsize=(12,6))
+
 plt.plot(equity_curve)
 
-plt.title("BTC Swing Trading Equity Curve")
+plt.title("BTC Trend Breakout Strategy")
 
 plt.xlabel("Days")
 plt.ylabel("Portfolio Value")
