@@ -9,45 +9,52 @@ import time
 # STRATEGY SUMMARY
 # =========================================================
 #
-# STRATEGY TYPE:
-# Multi-timeframe discretionary-style trend-following setup
+# MULTI-TIMEFRAME TREND FOLLOWING STRATEGY
 #
-# HIGHER TIMEFRAME (4H):
-# - Used to determine directional bias
-# - Only LONG trades are allowed
-# - Price must be above EMA200
-# - EMA20 must be above EMA50
+# HIGHER TIMEFRAME (4H)
+# ---------------------
+# Determines overall bullish trend direction.
 #
-# MID TIMEFRAME (1H):
-# - Used for confirmation
-# - Price must also be above EMA200
-# - EMA20 must be above EMA50
-# - RSI > 50 for bullish momentum
-# - MACD histogram > 0 for bullish momentum
+# Conditions:
+# - Price above EMA200
+# - EMA20 above EMA50
 #
-# ENTRY TIMEFRAME (15M):
-# - Entry happens when:
-#     - Price closes above previous 20-candle high
-#     - RSI > 50
-#     - MACD histogram > 0
+# MID TIMEFRAME (1H)
+# ------------------
+# Confirms momentum alignment.
 #
-# ENTRY:
-# - Enter on NEXT candle open (more realistic)
+# Conditions:
+# - Price above EMA200
+# - RSI > 50
 #
-# STOP LOSS:
-# - 1 ATR below entry
+# ENTRY TIMEFRAME (15M)
+# ---------------------
+# Finds breakout entry opportunity.
 #
-# TAKE PROFIT:
-# - Fixed 2:1 Reward:Risk
+# Conditions:
+# - Close above previous 20 candle high
+# - RSI > 50
 #
-# RISK:
+# ENTRY
+# -----
+# - Enter next candle open
+#
+# STOP LOSS
+# ----------
+# - 0.5 ATR below entry
+#
+# TAKE PROFIT
+# -----------
+# - Fixed 2:1 Reward-To-Risk
+#
+# RISK
+# ----
 # - Fixed $10 risk per trade
 #
-# FEES:
-# - 0.1% fee per side
-#
-# SLIPPAGE:
-# - 0.05% slippage assumed
+# REALISM
+# -------
+# - Includes fees
+# - Includes slippage
 #
 # =========================================================
 
@@ -56,13 +63,17 @@ import time
 # CONFIG
 # =========================================================
 
-SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+# Use ONE symbol first while debugging.
+# Add ETH/SOL later once everything works.
+
+SYMBOLS = ["BTC/USDT"]
 
 ENTRY_TIMEFRAME = "15m"
 MID_TIMEFRAME = "1h"
 HTF_TIMEFRAME = "4h"
 
-START_DATE = "2022-01-01T00:00:00Z"
+# Keep the history smaller first for speed/debugging.
+START_DATE = "2025-01-01T00:00:00Z"
 
 RISK_PER_TRADE = 10
 RR_RATIO = 2.0
@@ -71,6 +82,9 @@ FEE_RATE = 0.001
 SLIPPAGE_RATE = 0.0005
 
 BREAKOUT_LOOKBACK = 20
+
+# Limit candle holding duration for performance.
+MAX_HOLD_CANDLES = 50
 
 exchange = ccxt.binance({
     "enableRateLimit": True
@@ -82,10 +96,18 @@ exchange = ccxt.binance({
 # =========================================================
 
 def fetch_ohlcv(symbol, timeframe, start_date):
+
     since = exchange.parse8601(start_date)
+
     all_candles = []
 
-    while True:
+    loops = 0
+    max_loops = 50
+
+    while loops < max_loops:
+
+        loops += 1
+
         candles = exchange.fetch_ohlcv(
             symbol,
             timeframe=timeframe,
@@ -98,11 +120,13 @@ def fetch_ohlcv(symbol, timeframe, start_date):
 
         all_candles.extend(candles)
 
-        since = candles[-1][0] + 1
+        last_timestamp = candles[-1][0]
+
+        since = last_timestamp + 1
 
         print(
             f"{symbol} {timeframe}: fetched until "
-            f"{datetime.fromtimestamp(candles[-1][0] / 1000, tz=timezone.utc)}"
+            f"{datetime.fromtimestamp(last_timestamp / 1000, tz=timezone.utc)}"
         )
 
         time.sleep(exchange.rateLimit / 1000)
@@ -112,13 +136,36 @@ def fetch_ohlcv(symbol, timeframe, start_date):
 
     df = pd.DataFrame(
         all_candles,
-        columns=["timestamp", "open", "high", "low", "close", "volume"]
+        columns=[
+            "timestamp",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume"
+        ]
     )
 
-    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    df["datetime"] = pd.to_datetime(
+        df["timestamp"],
+        unit="ms",
+        utc=True
+    )
+
     df.set_index("datetime", inplace=True)
 
-    return df[["open", "high", "low", "close", "volume"]]
+    df = df[[
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+    ]]
+
+    print(f"{symbol} {timeframe}: FETCH COMPLETE")
+    print(f"Total candles fetched: {len(df)}")
+
+    return df
 
 
 # =========================================================
@@ -126,23 +173,23 @@ def fetch_ohlcv(symbol, timeframe, start_date):
 # =========================================================
 
 def add_indicators(df):
+
     df = df.copy()
 
     close = df["close"]
     high = df["high"]
     low = df["low"]
 
-    # EMAs
+    # Trend EMAs
     df["ema20"] = ta.trend.ema_indicator(close, window=20)
     df["ema50"] = ta.trend.ema_indicator(close, window=50)
     df["ema200"] = ta.trend.ema_indicator(close, window=200)
 
     # RSI
-    df["rsi"] = ta.momentum.RSIIndicator(close, window=14).rsi()
-
-    # MACD
-    macd = ta.trend.MACD(close)
-    df["macd_hist"] = macd.macd_diff()
+    df["rsi"] = ta.momentum.RSIIndicator(
+        close,
+        window=14
+    ).rsi()
 
     # ATR
     df["atr"] = ta.volatility.AverageTrueRange(
@@ -152,17 +199,23 @@ def add_indicators(df):
         window=14
     ).average_true_range()
 
-    # Previous breakout high
-    df["hh20"] = high.rolling(BREAKOUT_LOOKBACK).max().shift(1)
+    # Previous 20-candle high
+    df["hh20"] = (
+        high
+        .rolling(BREAKOUT_LOOKBACK)
+        .max()
+        .shift(1)
+    )
 
     return df
 
 
 # =========================================================
-# HTF BIAS
+# HIGHER TIMEFRAME BIAS
 # =========================================================
 
 def htf_bullish(row):
+
     return (
         row["close"] > row["ema200"] and
         row["ema20"] > row["ema50"]
@@ -170,15 +223,14 @@ def htf_bullish(row):
 
 
 # =========================================================
-# MTF CONFIRMATION
+# MID TIMEFRAME CONFIRMATION
 # =========================================================
 
 def mtf_confirmation(row):
+
     return (
         row["close"] > row["ema200"] and
-        row["ema20"] > row["ema50"] and
-        row["rsi"] > 50 and
-        row["macd_hist"] > 0
+        row["rsi"] > 50
     )
 
 
@@ -187,10 +239,10 @@ def mtf_confirmation(row):
 # =========================================================
 
 def entry_signal(row):
+
     return (
         row["close"] > row["hh20"] and
-        row["rsi"] > 50 and
-        row["macd_hist"] > 0
+        row["rsi"] > 50
     )
 
 
@@ -204,37 +256,80 @@ def run_backtest(symbol):
     print(f"RUNNING BACKTEST FOR {symbol}")
     print("=" * 80)
 
+    # =====================================================
+    # FETCH DATA
+    # =====================================================
+
     df_15m = add_indicators(
-        fetch_ohlcv(symbol, ENTRY_TIMEFRAME, START_DATE)
+        fetch_ohlcv(
+            symbol,
+            ENTRY_TIMEFRAME,
+            START_DATE
+        )
     )
 
     df_1h = add_indicators(
-        fetch_ohlcv(symbol, MID_TIMEFRAME, START_DATE)
+        fetch_ohlcv(
+            symbol,
+            MID_TIMEFRAME,
+            START_DATE
+        )
     )
 
     df_4h = add_indicators(
-        fetch_ohlcv(symbol, HTF_TIMEFRAME, START_DATE)
+        fetch_ohlcv(
+            symbol,
+            HTF_TIMEFRAME,
+            START_DATE
+        )
     )
 
-    trades = []
-
+    # Remove NaNs from indicators
     df_15m.dropna(inplace=True)
     df_1h.dropna(inplace=True)
     df_4h.dropna(inplace=True)
 
+    trades = []
+
+    trade_open = False
+
+    htf_pass = 0
+    mtf_pass = 0
+    entry_pass = 0
+
+    # =====================================================
+    # MAIN LOOP
+    # =====================================================
+
     for i in range(1, len(df_15m) - 1):
 
+        if i % 500 == 0:
+            print(f"Processing candle {i}/{len(df_15m)}")
+
+        # Prevent overlapping trades
+        if trade_open:
+            continue
+
         current_time = df_15m.index[i]
+
         row_15m = df_15m.iloc[i]
 
         # =================================================
-        # GET LATEST AVAILABLE 1H AND 4H DATA
+        # GET LATEST AVAILABLE 1H / 4H CANDLE
         # =================================================
 
-        df_1h_filtered = df_1h[df_1h.index <= current_time]
-        df_4h_filtered = df_4h[df_4h.index <= current_time]
+        df_1h_filtered = df_1h[
+            df_1h.index <= current_time
+        ]
 
-        if len(df_1h_filtered) == 0 or len(df_4h_filtered) == 0:
+        df_4h_filtered = df_4h[
+            df_4h.index <= current_time
+        ]
+
+        if (
+            len(df_1h_filtered) == 0 or
+            len(df_4h_filtered) == 0
+        ):
             continue
 
         row_1h = df_1h_filtered.iloc[-1]
@@ -247,6 +342,8 @@ def run_backtest(symbol):
         if not htf_bullish(row_4h):
             continue
 
+        htf_pass += 1
+
         # =================================================
         # MID TIMEFRAME CONFIRMATION
         # =================================================
@@ -254,12 +351,16 @@ def run_backtest(symbol):
         if not mtf_confirmation(row_1h):
             continue
 
+        mtf_pass += 1
+
         # =================================================
-        # ENTRY TIMEFRAME SIGNAL
+        # ENTRY SIGNAL
         # =================================================
 
         if not entry_signal(row_15m):
             continue
+
+        entry_pass += 1
 
         # =================================================
         # ENTRY EXECUTION
@@ -270,9 +371,13 @@ def run_backtest(symbol):
         entry_time = next_row.name
 
         # Realistic slippage
-        entry_price = next_row["open"] * (1 + SLIPPAGE_RATE)
+        entry_price = (
+            next_row["open"]
+            * (1 + SLIPPAGE_RATE)
+        )
 
-        atr = row_15m["atr"]
+        # Smaller ATR stop for more realistic crypto entries
+        atr = row_15m["atr"] * 0.5
 
         stop_loss = entry_price - atr
 
@@ -281,21 +386,50 @@ def run_backtest(symbol):
         if risk_per_unit <= 0:
             continue
 
-        take_profit = entry_price + (risk_per_unit * RR_RATIO)
+        # Fixed 2:1 reward:risk
+        take_profit = (
+            entry_price +
+            (risk_per_unit * RR_RATIO)
+        )
 
-        # Position sizing using fixed $10 risk
-        position_size = RISK_PER_TRADE / risk_per_unit
+        # Position sizing
+        position_size = (
+            RISK_PER_TRADE /
+            risk_per_unit
+        )
 
-        entry_value = position_size * entry_price
-        entry_fee = entry_value * FEE_RATE
+        entry_value = (
+            position_size *
+            entry_price
+        )
+
+        entry_fee = (
+            entry_value *
+            FEE_RATE
+        )
+
+        print(
+            f"\nTRADE OPENED | "
+            f"{symbol} | "
+            f"Entry: {entry_price:.2f} | "
+            f"SL: {stop_loss:.2f} | "
+            f"TP: {take_profit:.2f}"
+        )
+
+        trade_open = True
 
         # =================================================
-        # MONITOR TRADE
+        # TRADE MANAGEMENT
         # =================================================
 
         trade_closed = False
 
-        for j in range(i + 1, len(df_15m)):
+        future_limit = min(
+            i + MAX_HOLD_CANDLES,
+            len(df_15m)
+        )
+
+        for j in range(i + 1, future_limit):
 
             future_row = df_15m.iloc[j]
 
@@ -305,35 +439,64 @@ def run_backtest(symbol):
             exit_reason = None
             exit_price = None
 
-            # Stop Loss hit
+            # STOP LOSS
             if low <= stop_loss:
-                exit_reason = "STOP LOSS"
-                exit_price = stop_loss * (1 - SLIPPAGE_RATE)
 
-            # Take Profit hit
+                exit_reason = "STOP LOSS"
+
+                exit_price = (
+                    stop_loss *
+                    (1 - SLIPPAGE_RATE)
+                )
+
+            # TAKE PROFIT
             elif high >= take_profit:
+
                 exit_reason = "TAKE PROFIT"
-                exit_price = take_profit * (1 - SLIPPAGE_RATE)
+
+                exit_price = (
+                    take_profit *
+                    (1 - SLIPPAGE_RATE)
+                )
 
             if exit_reason:
 
                 exit_time = future_row.name
 
-                exit_value = position_size * exit_price
-                exit_fee = exit_value * FEE_RATE
+                exit_value = (
+                    position_size *
+                    exit_price
+                )
+
+                exit_fee = (
+                    exit_value *
+                    FEE_RATE
+                )
 
                 gross_pnl = (
                     (exit_price - entry_price)
                     * position_size
                 )
 
-                total_fees = entry_fee + exit_fee
+                total_fees = (
+                    entry_fee +
+                    exit_fee
+                )
 
-                net_pnl = gross_pnl - total_fees
+                net_pnl = (
+                    gross_pnl -
+                    total_fees
+                )
 
-                r_multiple = net_pnl / RISK_PER_TRADE
+                r_multiple = (
+                    net_pnl /
+                    RISK_PER_TRADE
+                )
 
-                holding_period = exit_time - entry_time
+                holding_period = (
+                    exit_time -
+                    entry_time
+                )
 
                 trade = {
                     "symbol": symbol,
@@ -354,11 +517,26 @@ def run_backtest(symbol):
 
                 trades.append(trade)
 
+                print(
+                    f"TRADE CLOSED | "
+                    f"{exit_reason} | "
+                    f"PnL: ${net_pnl:.2f}"
+                )
+
+                trade_open = False
                 trade_closed = True
+
                 break
 
         if not trade_closed:
-            continue
+            trade_open = False
+
+    print("\nDEBUG COUNTERS")
+    print(f"HTF PASSED: {htf_pass}")
+    print(f"MTF PASSED: {mtf_pass}")
+    print(f"ENTRY PASSED: {entry_pass}")
+
+    print(f"\n{symbol}: TOTAL TRADES FOUND = {len(trades)}")
 
     return trades
 
@@ -379,10 +557,15 @@ def calculate_metrics(trades):
 
     total_trades = len(df)
 
-    win_rate = (len(wins) / total_trades) * 100
+    win_rate = (
+        len(wins) / total_trades
+    ) * 100
 
     gross_profit = wins["net_pnl"].sum()
-    gross_loss = abs(losses["net_pnl"].sum())
+
+    gross_loss = abs(
+        losses["net_pnl"].sum()
+    )
 
     profit_factor = (
         gross_profit / gross_loss
@@ -392,8 +575,15 @@ def calculate_metrics(trades):
 
     expectancy = df["net_pnl"].mean()
 
-    avg_win = wins["net_pnl"].mean() if len(wins) > 0 else 0
-    avg_loss = losses["net_pnl"].mean() if len(losses) > 0 else 0
+    avg_win = (
+        wins["net_pnl"].mean()
+        if len(wins) > 0 else 0
+    )
+
+    avg_loss = (
+        losses["net_pnl"].mean()
+        if len(losses) > 0 else 0
+    )
 
     return {
         "total_trades": total_trades,
@@ -414,7 +604,7 @@ def calculate_metrics(trades):
 
 
 # =========================================================
-# PRINT TRADE HISTORY
+# PRINT TRADES
 # =========================================================
 
 def print_trades(trades):
