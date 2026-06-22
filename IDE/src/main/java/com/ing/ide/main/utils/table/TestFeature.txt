@@ -1,1 +1,244 @@
 // BTC
+import React from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  useWindowDimensions,
+  ActivityIndicator,
+  ImageBackground 
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient"; 
+import { useGetHomeDates } from "../../use-cases/useGetHomeDates";
+import { Colors } from "../../shared/theme/Color"; 
+import { useAppTheme } from "../../shared/theme/ThemeProvider";
+
+// --- PRECISE ALIGNMENT MATH ---
+const SCREEN_PADDING = 20; 
+const CARD_GAP = 12;
+
+export default function HomeScreen() {
+  const { width } = useWindowDimensions();
+  const { upcomingDate, recentDates, isLoading } = useGetHomeDates();
+  
+  const { theme } = useAppTheme();
+  const currentColors = Colors[theme];
+  
+  // 1. The width of the primary card
+  const SAFE_WIDTH = width - (SCREEN_PADDING * 2);
+
+  // 2. Two cards + the gap between them exactly equal the SAFE_WIDTH
+  const CARD_WIDTH = (SAFE_WIDTH - CARD_GAP) / 2; 
+  const CARD_HEIGHT = CARD_WIDTH * (14 / 9); 
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: currentColors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#ED4C67" />
+      </View>
+    );
+  }
+
+  // Offset snaps seamlessly to the left edge of each card
+  const snapOffsets = recentDates.map((_, i) => i * (CARD_WIDTH + CARD_GAP));
+
+  return (
+    <ScrollView style={[styles.container, { backgroundColor: currentColors.background }]} showsVerticalScrollIndicator={false}>
+      
+      {/* Primary Date Card */}
+      {upcomingDate ? (
+        <ImageBackground
+          source={{ uri: upcomingDate.images?.[0] }}
+          style={[styles.card, styles.primaryCard]}
+          imageStyle={{ borderRadius: 20 }}
+          resizeMode="cover"
+        >
+          <LinearGradient
+            colors={["#ED4C67", "rgba(237, 76, 103, 0.85)", "rgba(0,0,0,0)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.8, y: 0 }} 
+            style={styles.cardGradientOverlay}
+          />
+
+          <View style={styles.cardContent}>
+            <View style={styles.datePill}>
+              <Text style={styles.datePillText}>{upcomingDate.pillText}</Text>
+            </View>
+            
+            <Text style={styles.primaryCardMain}>{upcomingDate.title}</Text>
+            <Text style={styles.primaryCardMeta}>{upcomingDate.subtitle}</Text>
+          </View>
+        </ImageBackground>
+      ) : (
+        <View style={[styles.card, styles.primaryCard, { backgroundColor: currentColors.cardBackground }]}>
+          <Text style={[styles.primaryCardMain, { color: currentColors.textSecondary }]}>No upcoming dates</Text>
+        </View>
+      )}
+
+      {/* Recent Dates Section */}
+      {recentDates.length > 0 && (
+        <>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: currentColors.text }]}>Recent Dates</Text>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.recentDatesScrollView}
+            contentContainerStyle={styles.recentDatesContent}
+            snapToOffsets={snapOffsets}
+            decelerationRate="fast"
+            disableIntervalMomentum={true} 
+          >
+            {recentDates.map((date) => (
+              <View 
+                key={date.id} 
+                style={{ 
+                  width: CARD_WIDTH, 
+                  marginRight: CARD_GAP // Unconditional gap ensures mathematical symmetry
+                }}
+              >
+                {/* Dynamic Placeholder Background */}
+                <View style={[styles.pastDateCard, { height: CARD_HEIGHT, backgroundColor: currentColors.cardBackground }]}>
+                  <Image 
+                    source={{ uri: date.image }} 
+                    style={styles.pastDateImage} 
+                  />
+                  
+                  {/* Updated Date Box Badge */}
+                  <View style={[styles.dateBox, { backgroundColor: theme === 'light' ? '#ED4C67' : '#FFFFFF' }]}>
+                    <Text style={[styles.dateDay, { color: theme === 'light' ? '#FFFFFF' : '#ED4C67' }]}>{date.day}</Text>
+                    <Text style={[styles.dateMonth, { color: theme === 'light' ? '#FFFFFF' : '#ED4C67' }]}>{date.month}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.recentDateMeta}>
+                  <Text style={[styles.recentDateTitle, { color: currentColors.text }]} numberOfLines={1}>
+                    {date.title}
+                  </Text>
+                  <Text style={[styles.recentDateActivities, { color: currentColors.textSecondary }]}>
+                    {date.activities} activities
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </>
+      )}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: SCREEN_PADDING,
+  },
+  card: {
+    borderRadius: 20,
+  },
+  primaryCard: {
+    marginTop: 0,
+    overflow: 'hidden', 
+    backgroundColor: '#ED4C67', 
+  },
+  cardGradientOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+  },
+  cardContent: {
+    position: 'relative',
+    padding: 15,
+    paddingVertical: 25,
+  },
+  datePill: {
+    backgroundColor: "#FFFFFF",
+    alignSelf: "flex-start", 
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 16,
+    marginBottom: 13,
+  },
+  datePillText: {
+    color: "#ED4C67", 
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  primaryCardMain: {
+    fontSize: 25,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  primaryCardMeta: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.9)", 
+    marginBottom: 20, 
+  },
+  sectionHeader: {
+    marginTop: 28,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  recentDatesScrollView: {
+    marginHorizontal: -SCREEN_PADDING, 
+  },
+  recentDatesContent: {
+    // 3. Align the first card with the left edge of the Primary Card
+    paddingLeft: SCREEN_PADDING, 
+    // 4. Ensure the right space perfectly aligns the last card with the right edge of the Primary Card
+    paddingRight: SCREEN_PADDING - CARD_GAP, 
+    paddingVertical: 16,
+  },
+  pastDateCard: {
+    width: "100%", 
+    borderRadius: 16,
+    overflow: "hidden", 
+  },
+  pastDateImage: {
+    ...StyleSheet.absoluteFillObject, 
+    width: "100%",
+    height: "100%",
+  },
+  dateBox: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    borderTopLeftRadius: 16, 
+    borderBottomRightRadius: 16, 
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dateDay: {
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 20, 
+  },
+  dateMonth: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  recentDateMeta: {
+    marginTop: 8,
+    paddingHorizontal: 2, 
+  },
+  recentDateTitle: {
+    fontSize: 14,
+    fontWeight: "400",
+  },
+  recentDateActivities: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+});
