@@ -1,0 +1,46 @@
+name: Mirror Upstream Branches
+
+on:
+  schedule:
+    - cron: "0 16 * * *" # 12:00 AM PHT (UTC+8)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/ing-bank/INGenious.git
+          git fetch origin --prune
+          git fetch upstream --prune
+
+      - name: Mirror matching branches
+        run: |
+          for branch in $(git for-each-ref \
+            --format='%(refname:short)' refs/remotes/upstream | sed 's|upstream/||'); do
+
+            [ "$branch" = "HEAD" ] && continue
+            [ "$branch" = "main" ] && continue
+
+            # Only mirror branches that already exist in the fork
+            if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+              echo "Mirroring branch: $branch"
+
+              git checkout -B "$branch" "upstream/$branch"
+
+              git push \
+                --force-with-lease \
+                origin \
+                "$branch"
+            fi
+          done
