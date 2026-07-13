@@ -1,0 +1,141 @@
+<html>
+    <head>
+        <title>Generate Reports</title>
+        <link rel="stylesheet" type="text/css" href="../stylesheets/base.css">
+        <link rel="stylesheet" type="text/css" href="../stylesheets/generate-reports.css">
+        <link rel="icon" type="image/x-icon" href="/images/favicon.png">
+    </head>
+    <body>
+        {{!-- Header --}}
+        <div class="header-div">
+            <img class="logo" src="../images/logo.png">
+            <div class="flex center">
+                <ul>
+                    <li><a class="header-divider"></a></li>
+                    <li><a class="header-button" href="/home">Home</a></li>
+                    <li><a class="header-divider">></a></li>
+                    <li><a class="header-button on-page">Generate Reports</a></li>
+                </ul>
+            </div>
+            <div class="sign-out">
+                <div>
+                    <span>{{user.name}}</span> <br />
+                    <a class="sign-out-button" href="/">Sign Out</a>
+                </div>
+            </div>
+        </div>
+        <div class="body-div">
+            <div class="flex column">
+                <span class="title-card">Generate Reports</span>
+                <div class="flex center">
+                    <form class="flex left column report-form" id="report-form" action="/reports" method="post">
+                        <div class="form-option flex column left type">
+                            <span class="bold">Report Type: </span>
+                            <select class="no-left-margin" name="report-type" id="report-type">
+                                <option></option>
+                                <option>Sales</option>
+                                {{#if user.isAdmin 1}} 
+                                <option>Profit</option>
+                                {{/if}}
+                                <option>Deliveries</option>
+                                <option>Item Performance</option>
+                                <option>Item Aging</option>
+                                <option>Stock Card</option>
+                            </select>
+                        </div>
+                        <div class="form-option flex column left group">
+                            <span class="bold">Report Group: </span>
+                            <select class="no-left-margin" name="report-aggregate" id="report-aggregate">
+                                <option></option>
+                                <option>Daily</option>
+                                <option>Weekly</option>
+                                <option>Monthly</option>
+                                <option>Yearly</option>
+                            </select>
+                        </div>
+                        <div class="form-option flex column left">
+                            <span class="bold">Date Range: </span>
+                            <span>
+                                <input class="date no-left-margin" name="start-date" type="date" id="report-start-date" />
+                                <span> - </span>
+                                <input class="date" name="end-date" type="date" id="report-end-date" />
+                            </span>
+                        </div>
+
+                        <br />
+
+                        <button class="button" onclick="return validateFields()" type="submit">
+                            Generate Report
+                        </button>
+                        <span class="error-message" id="error-message" hidden></span>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </body>
+    <script>
+        const type = document.getElementById("report-type");
+        const aggregate = document.getElementById("report-aggregate");
+        const start = document.getElementById("report-start-date");
+        const end = document.getElementById("report-end-date");
+        const error = document.getElementById("error-message");
+
+        document.getElementById("report-type").addEventListener("change", function () {
+            const selectedOption = this.value;
+            const groupDiv = document.querySelector(".group");
+            const dateDiv = document.querySelector(".form-option:nth-child(3)"); 
+            const reportAggregate = document.getElementById("report-aggregate");
+
+            if (selectedOption === "Item Aging") {
+                groupDiv.style.display = "none";
+                dateDiv.style.display = "none";
+                reportAggregate.selectedIndex = 0;
+            } else if (selectedOption === "Deliveries" || selectedOption === "Item Performance") {
+                groupDiv.style.display = "none";
+                dateDiv.style.display = "flex";
+                reportAggregate.selectedIndex = 0;
+            } else {
+                groupDiv.style.display = "flex";
+                dateDiv.style.display = "flex";
+            }
+        });
+
+        function validateFields() {
+            const typeValue = type.value;
+            const aggregateValue = aggregate.value;
+            const startValue = start.value;
+            const endValue = end.value;
+
+            if (!typeValue) {
+                showError("Please select a report type");
+                return false;
+            }
+
+            if (typeValue !== "Item Aging" && typeValue !== "Deliveries" && typeValue !== "Item Performance" && !aggregateValue) {
+                showError("Please select a report group");
+                return false;
+            }
+
+            if (typeValue !== "Item Aging" && (!startValue || !endValue)) {
+                showError("Please select both start and end dates");
+                return false;
+            }
+
+            if (typeValue !== "Item Aging" && new Date(startValue) > new Date(endValue)) {
+                showError("Start date must be on or before end date");
+                return false;
+            }
+
+            return true;
+        }
+
+        function showError(message) {
+            error.textContent = message;
+            error.hidden = false;
+            error.style.opacity = 1;
+            setTimeout(() => {
+                error.style.opacity = 0;
+            }, 5000);
+        }
+    </script>
+</html>

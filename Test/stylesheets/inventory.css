@@ -1,0 +1,325 @@
+.inventory-table {
+    top: 0%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+    /* border-radius: 5px; */
+    /* overflow: hidden; */
+    box-shadow: rgba(78, 78, 78, 0.35) 0px 1px 10px;
+    color: #1F2F34;
+    min-width: 100%;
+} 
+.inventory-table thead tr {
+    font-size: large;
+    font-weight: normal;
+    background-color: #F1F7F9;
+    text-align: left;
+    box-shadow: rgba(78, 78, 78, 0.35) 0px 1px 10px;
+}
+.inventory-table th, .inventory-table td {
+    padding: 18px;
+}
+.inventory-table th.amount, .inventory-table td.amount {
+    padding-right: 40px;
+}
+.inventory-table tbody td {
+    padding: 10px;
+}
+.inventory-table tbody tr {
+    font-size: large;
+    border-bottom: 2px solid #EBEFF2;
+}
+.inventory-table tbody tr:last-of-type {
+    border-bottom: 0;
+}
+tbody tr:hover {
+    outline: 0px; 
+    background-color: #fffdee;
+}
+tbody tr:focus {
+    outline: 0px; 
+    background-color: #FDF7C1;
+}
+.inventory-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    box-shadow: rgba(78, 78, 78, 0.35) 0px 1px 10px;
+}
+
+.table-container {
+    position: relative;
+    max-height: 410px;
+    border-radius: 5px;
+    overflow-y: auto;
+    box-shadow: rgba(78, 78, 78, 0.35) 0px 1px 10px;
+}
+
+.container {
+    position: absolute;
+    top: 15%;
+}
+
+.number, .int {
+    text-align: right;
+}
+.string {
+    text-align: left;
+}
+
+.item-name {
+    min-width: 385px;
+}
+
+.input-container input {
+    width: 130px;
+}
+.input-container input:focus {
+    background-color: #ffdcd7;
+}
+.input-container {
+    display: flex;
+    align-items: center;
+    width: fit-content;
+
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: rgba(78, 78, 78, 0.35) 0px 1px 10px;
+    border: 1px solid var(--border);
+    background-color: white;
+    font-weight: bold;
+    margin-right: 20px;
+}
+
+.title-card {
+    margin: 0;
+    margin-right: 15px;
+}
+
+.nav {
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+select {
+    margin-left: 5px;
+}
+
+#search {
+    width: 250px;
+}
+
+/* Users */
+
+.wide {
+    min-width: 200px;
+}
+
+.middle {
+    text-align: center;
+}
+
+.circle {
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+}
+
+.green {
+    background: #89ba94;
+}
+
+.red {
+    background: tomato;
+}
+
+.overlay-input {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    min-width: 200px;
+    height: 200px;
+    top: 50%;
+    left: 50%;
+    font-size: 25px;
+    font-weight: bold;
+    background-color: white;
+    padding: 15px;
+    border: solid 1px var(--primary);
+    border-radius: 5px;
+    box-shadow: rgba(78, 78, 78, 0.35) 0px 1px 10px;
+    z-index: 2;
+}
+
+.add-overlay-input {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    min-width: 200px;
+    height: 350px;
+    top: 50%;
+    left: 50%;
+    font-size: 25px;
+    font-weight: bold;
+    background-color: white;
+    padding: 15px;
+    border: solid 1px var(--primary);
+    border-radius: 5px;
+    box-shadow: rgba(78, 78, 78, 0.35) 0px 1px 10px;
+    z-index: 2;
+}
+
+.edit-input {
+    padding: 10px;
+    font-size: 15px;
+    border-radius: 3px;
+    border: solid 1px var(--primary);
+    width: 100%;
+}
+
+.price, .cost, .name, .id {
+    font-size: 15px;
+    margin-top: 5px;
+}
+
+.edit-title, .add-title {
+    font-size: 15px;
+}
+.add-title {
+    text-align: center;
+}
+
+.edit-item {
+    color: tomato;
+}
+
+button {
+    padding: 5px;
+    background-color: #818589;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 45%;
+    margin-top: 10px;
+}
+
+.cancel-button, .add-cancel-button {
+    background-color: tomato;
+    margin-right: 7px;
+} .cancel-button:hover, .add-cancel-button:hover {
+    background-color: #ff846e;
+}
+
+.save-button, .add-save-button {
+    background-color: #61c376;
+    margin-left: 7px;
+} .save-button:hover, .add-save-button:hover {
+    background-color: #84d284;
+}
+
+.error-message {
+    color: white;
+    background-color: red;
+    font-size: small;
+    padding: 5px;
+    border-radius: 6px;
+    align-self: center;
+    position: absolute;
+    transform: translate(-50%, -50%);
+    left: 50%;
+    top: 10%;
+    box-shadow: rgba(0, 0, 0, 0.35) 0px 5px 15px;
+
+    opacity: 0;
+    transition: opacity 0.5s ease; 
+} .error-message:hover {
+    background-color: tomato;
+}
+
+.add-item {
+    background-color: #61c376;
+    color: white;
+}
+.add-item:hover {
+    background-color: #84d284;
+    cursor: pointer;
+}
+
+/* Internet Checkbox */
+.checkbox-wrapper-2 .ikxBAC {
+    appearance: none;
+    background-color: #dfe1e4;
+    border-radius: 72px;
+    border-style: none;
+    flex-shrink: 0;
+    height: 20px;
+    margin: 0;
+    position: relative;
+    width: 30px;
+    transform: scale(1);
+}
+
+.checkbox-wrapper-2 .ikxBAC::before {
+    bottom: -6px;
+    content: "";
+    left: -6px;
+    position: absolute;
+    right: -6px;
+    top: -6px;
+}
+
+.checkbox-wrapper-2 .ikxBAC,
+.checkbox-wrapper-2 .ikxBAC::after {
+    transition: all 100ms ease-out;
+}
+
+.checkbox-wrapper-2 .ikxBAC::after {
+    background-color: #fff;
+    border-radius: 50%;
+    content: "";
+    height: 14px;
+    left: 3px;
+    position: absolute;
+    top: 3px;
+    width: 14px;
+}
+
+.checkbox-wrapper-2 input[type=checkbox] {
+    cursor: default;
+}
+
+.checkbox-wrapper-2 .ikxBAC:hover {
+    background-color: #c9cbcd;
+    transition-duration: 0s;
+}
+
+.checkbox-wrapper-2 .ikxBAC:checked {
+    background-color: #6e79d6;
+}
+
+.checkbox-wrapper-2 .ikxBAC:checked::after {
+    background-color: #fff;
+    left: 13px;
+}
+
+.checkbox-wrapper-2 :focus:not(.focus-visible) {
+    outline: 0;
+}
+
+.checkbox-wrapper-2 .ikxBAC:checked:hover {
+    background-color: #535db3;
+}
+
+.center {
+    text-align: center;
+}
+
+.sales-table thead tr, .sales-table tbody tr {
+    font-size: 9px;
+}
+
+#add-user-input {
+    height: 400px;
+}
+
+#confirm-deletion {
+    height: 80px;
+}

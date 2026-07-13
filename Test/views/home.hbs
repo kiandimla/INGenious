@@ -1,0 +1,84 @@
+<html>
+    <head>
+        <title>Home</title>
+        <link rel="stylesheet" type="text/css" href="../stylesheets/base.css">
+        <link rel="stylesheet" type="text/css" href="../stylesheets/home.css">
+        <link rel="icon" type="image/x-icon" href="/images/favicon.png">
+    </head>
+    <body>
+        {{!-- Header --}}
+        <div class="header-div">
+            <img class="logo" src="../images/logo.png">
+            <div class="flex center">
+                <ul>
+                    <li><a class="header-divider"></a></li>
+                    <li><a class="header-button on-page">Home</a></li>
+                </ul>
+            </div>
+            <div class="sign-out">
+                <div>
+                    <span>{{user.name}}</span> <br />
+                    <a class="sign-out-button" href="/">Sign Out</a>
+                </div>
+            </div>
+        </div>
+        <div class="body-div center">
+            <div class="flex column center">
+                <div class="border flex center">
+                    <div class="dashboard">
+                        <button class="sales center" onclick="window.location.href='/encode-sales'">
+                            <div class="flex column center">
+                                <img src="../images/sales.png"> 
+                                <span>Encode Sales</span>
+                            </div>
+                        </button>
+
+                        <button onclick="window.location.href='/encode-deliveries'">
+                            <div class="flex column center">
+                                <img src="../images/deliveries.png"> 
+                                <span>Encode Deliveries</span>
+                            </div>
+                        </button>
+
+                        <button onclick="window.location.href='/records'">
+                            <div class="flex column center">
+                                <img src="../images/records.png"> 
+                                <span>View Records</span>
+                            </div>
+                        </button>
+
+                        <button onclick="window.location.href='/generate-reports'">
+                            <div class="flex column center">
+                                <img src="../images/reports.png"> 
+                                <span>Reports</span>
+                            </div>
+                        </button>
+
+                        <button onclick="window.location.href='/inventory'">
+                            <div class="flex column center">
+                                <img src="../images/inventory.png"> 
+                                <span>Inventory</span>
+                            </div>
+                        </button>
+
+                        {{#if user.isAdmin 1}} 
+                        <button onclick="window.location.href='/users'">
+                           <div class="flex column center">
+                                <img src="../images/users.png"> 
+                                <span>Users</span>
+                            </div>
+                        </button>
+                        {{/if}}
+
+                        <button class="eoq" onclick="window.location.href='/ooq'">
+                            <div class="flex column center">
+                                <img src="../images/order.png"> 
+                                <span>Generate OOQs</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
