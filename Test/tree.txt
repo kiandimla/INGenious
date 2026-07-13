@@ -1774,3 +1774,173 @@ C:.
         table2excel.js
         users.hbs
         
+
+
+# PhIMS — Project Context and Handoff
+
+## Goal
+Build a fully offline pharmacy inventory system using **React + Express + SQLite**. Preserve the original HBS application's workflows while improving security, structure, and transaction safety.
+
+## Supported runtime
+- Windows 10/11 x64
+- **Node.js 22 LTS** (current SQLite dependency is not intended for Node 26)
+- Application: `http://127.0.0.1:3000`
+- Database: `data/phims.sqlite3`
+- Frontend build: `client/dist`
+
+## Current architecture
+```text
+app.js
+src/
+  controllers/
+  services/
+  repositories/
+  routes/
+  middleware/
+  db/
+client/
+  src/pages/
+  src/components/
+  src/styles/
+data/
+  phims.sqlite3
+  .session-secret
+```
+
+Backend layers are **routes → controllers → services → repositories → SQLite**. Business operations use SQLite transactions.
+
+## Database
+Main tables:
+```text
+products
+stock_quantities
+sales
+sale_items
+deliveries
+delivery_pages
+delivery_items
+stock_movements
+users
+schema_migrations
+```
+
+- PLU contains 1,842 seeded products.
+- Product IDs and classification codes are text.
+- Money is stored as integer centavos.
+- Dates are ISO `YYYY-MM-DD`.
+- Sales snapshot price and cost for accurate historical reports.
+- Stock changes must also create `stock_movements` entries.
+
+## Implemented backend areas
+- Login/logout and server-side session
+- Password reset using a hashed reset key
+- Administrator/user management
+- PLU and inventory
+- Atomic sales and stock deductions
+- Atomic deliveries and stock increases
+- Records
+- Sales, Profit, Deliveries, Item Performance, Stock Card, Item Aging, and OOQ reports
+
+Important APIs:
+```text
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/auth/session
+POST /api/auth/reset-password
+GET  /api/products/available
+GET  /api/inventory
+POST /api/inventory/products
+PATCH /api/inventory/products/:itemId/pricing
+GET  /api/sales/next-invoice
+POST /api/sales
+POST /api/deliveries
+GET  /api/users
+POST /api/users
+DELETE /api/users/:id
+GET  /api/reports/*
+```
+
+## Admin setup
+From the project root:
+```powershell
+npm run user:create-admin -- "Administrator" "PhIMS-Admin-2026"
+```
+This creates or resets the administrator. Passwords currently allow 3–200 characters, although longer passwords are recommended.
+
+## Install and run
+```powershell
+cd C:\PhIMS
+npm install
+cd client
+npm install
+npm run build
+cd ..
+npm start
+```
+
+No environment variable is required for sessions. The app creates and reuses `data/.session-secret`.
+
+## React pages
+```text
+/login
+/forgot-password
+/home
+/sales
+/deliveries
+/inventory
+/users
+/reports
+/records
+/optimal-orders
+```
+
+Images are intentionally disregarded for now. Styling is local so the finished app remains offline. A framework such as Pico CSS may be bundled through npm for general styling, but Encode screens still need specialized CSS for keyboard focus, fixed popups, and dense tables.
+
+## Critical Encode Sales workflow
+The Sales screen is primarily keyboard-operated for speed and muscle memory:
+
+1. SI number receives initial focus and should default to the latest numeric SI + 1.
+2. `Enter` opens the item popup.
+3. Typing filters products in real time by name or item ID.
+4. The typing buffer clears after about 500 ms, but the existing filtered result stays visible; a new typed sequence starts a new filter.
+5. `Up/Down` navigates the product list; `Enter` adds the selected item **and closes the popup**.
+6. Sale rows use `Up/Down` navigation.
+7. `Q` opens quantity entry; type quantity and press `Enter`.
+8. `D` toggles discount for the selected line. It should be disabled/greyed out for discount-ineligible products once that field exists.
+9. `F2` removes the selected line.
+10. `F4` sets the discount percentage and remarks used by discounted lines.
+11. `F5` saves the transaction.
+12. `F9` clears the unsaved transaction.
+13. `F10` returns home.
+
+Known UI requirements/fixes:
+- Use separate `<thead>`, `<tbody>`, and `<tfoot>` sections.
+- Use `<colgroup>` or explicit widths so an empty table remains aligned.
+- Show a stable empty transaction row when no items exist.
+- When search has no matches, use selection index `-1`; arrows and Enter must not crash.
+- Stop propagation on popup Enter so adding an item cannot immediately reopen the popup.
+- React controls popup state and keyboard behavior; CSS controls fixed positioning, backdrop, stacking, and visual focus.
+
+## Delivery workflow
+Keyboard-oriented delivery entry supports supplier, purpose, invoice/date/page information, product selection, quantity, cost, and expiry. Perishable products require expiry. Multi-page invoices reuse the same invoice/date with unique page numbers.
+
+## Security and data rules
+- Never trust browser-submitted prices, totals, names, or available stock.
+- Enforce authentication and admin authorization in the backend.
+- Store passwords/reset keys only as bcrypt hashes.
+- Do not directly edit stock without a corresponding stock movement.
+- Do not run two app instances against the same SQLite file.
+
+## Backup
+Stop the app, then back up:
+```text
+data/phims.sqlite3
+data/.session-secret
+```
+Verify with:
+```powershell
+npm run db:verify
+```
+
+## Current priority for the next chat
+Continue refining **Encode Sales** until the exact keyboard flow is reliable, then apply the same interaction model to **Encode Deliveries**. When proposing changes, provide complete replacement files or clearly named copy-paste sections—not patch ZIPs.
