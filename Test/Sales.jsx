@@ -1,85 +1,40 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from "react";
-
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
 import Layout from "../components/Layout";
 import Notice from "../components/Notice";
 import { api, money } from "../api/client";
 
-const SEARCH_RESET_DELAY = 500;
-
-function normalizeSearchValue(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
+const SEARCH_DELAY_MS = 500;
+const clean = value => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 export default function Sales() {
   const navigate = useNavigate();
-
-  const invoiceInputRef = useRef(null);
-  const quantityInputRef = useRef(null);
-  const discountInputRef = useRef(null);
-  const discountRemarksRef = useRef(null);
-
-  const productRowRefs = useRef([]);
-  const saleRowRefs = useRef([]);
-
-  const searchTimeoutRef = useRef(null);
+  const invoiceRef = useRef(null);
+  const quantityRef = useRef(null);
+  const discountRef = useRef(null);
+  const remarksRef = useRef(null);
+  const productRows = useRef([]);
+  const saleRows = useRef([]);
+  const searchTimer = useRef(null);
 
   const [products, setProducts] = useState([]);
   const [invoiceNumber, setInvoiceNumber] = useState("");
-
   const [items, setItems] = useState([]);
-
+  const [saleIndex, setSaleIndex] = useState(-1);
+  const [productIndex, setProductIndex] = useState(0);
+  const [productPopup, setProductPopup] = useState(false);
+  const [searchBuffer, setSearchBuffer] = useState("");
+  const [searchFilter, setSearchFilter] = useState("");
+  const [quantityPopup, setQuantityPopup] = useState(false);
+  const [quantityDraft, setQuantityDraft] = useState("");
+  const [discountPopup, setDiscountPopup] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(20);
   const [discountRemarks, setDiscountRemarks] = useState("");
-
-  const [activeSaleRow, setActiveSaleRow] = useState(-1);
-
-  const [productPopupOpen, setProductPopupOpen] =
-    useState(false);
-
-  const [activeProductRow, setActiveProductRow] =
-    useState(0);
-
-  const [productSearchBuffer, setProductSearchBuffer] =
-    useState("");
-
-  const [productFilter, setProductFilter] =
-    useState("");
-
-  const [quantityPopupOpen, setQuantityPopupOpen] =
-    useState(false);
-
-  const [quantityDraft, setQuantityDraft] =
-    useState("");
-
-  const [discountPopupOpen, setDiscountPopupOpen] =
-    useState(false);
-
-  const [discountDraft, setDiscountDraft] =
-    useState("20");
-
-  const [discountRemarksDraft, setDiscountRemarksDraft] =
-    useState("");
-
+  const [discountDraft, setDiscountDraft] = useState("20");
+  const [remarksDraft, setRemarksDraft] = useState("");
   const [message, setMessage] = useState("");
-  const [messageType, setMessageType] =
-    useState("error");
-
+  const [messageType, setMessageType] = useState("error");
   const [saving, setSaving] = useState(false);
-
-  const popupOpen =
-    productPopupOpen ||
-    quantityPopupOpen ||
-    discountPopupOpen;
 
   const notify = useCallback((text, type = "error") => {
     setMessage(text);
@@ -88,10 +43,7 @@ export default function Sales() {
 
   const loadProducts = useCallback(async () => {
     try {
-      const response = await api(
-        "/api/products/available"
-      );
-
+      const response = await api("/api/products/available");
       setProducts(response.products);
     } catch (error) {
       notify(error.message);
@@ -100,10 +52,7 @@ export default function Sales() {
 
   const loadNextInvoice = useCallback(async () => {
     try {
-      const response = await api(
-        "/api/sales/next-invoice"
-      );
-
+      const response = await api("/api/sales/next-invoice");
       setInvoiceNumber(response.invoiceNumber || "1");
     } catch (error) {
       notify(error.message);
@@ -113,1240 +62,377 @@ export default function Sales() {
   useEffect(() => {
     loadProducts();
     loadNextInvoice();
-  }, [loadProducts, loadNextInvoice]);
-
-  useEffect(() => {
-    invoiceInputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, []);
+    requestAnimationFrame(() => invoiceRef.current?.focus());
+    return () => clearTimeout(searchTimer.current);
+  }, [loadNextInvoice, loadProducts]);
 
   const filteredProducts = useMemo(() => {
-    if (!productFilter) {
-      return products;
+    const needle = clean(searchFilter);
+    if (!needle) return products;
+    const begins = [];
+    const contains = [];
+    for (const product of products) {
+      const name = clean(product.itemName);
+      const id = clean(product.itemId);
+      if (name.startsWith(needle) || id.startsWith(needle)) begins.push(product);
+      else if (name.includes(needle) || id.includes(needle)) contains.push(product);
     }
-
-    const normalizedFilter =
-      normalizeSearchValue(productFilter);
-
-    const startsWithResults = products.filter(
-      product =>
-        normalizeSearchValue(product.itemName)
-          .startsWith(normalizedFilter) ||
-        normalizeSearchValue(product.itemId)
-          .startsWith(normalizedFilter)
-    );
-
-    const containsResults = products.filter(
-      product =>
-        !startsWithResults.includes(product) &&
-        (
-          normalizeSearchValue(product.itemName)
-            .includes(normalizedFilter) ||
-          normalizeSearchValue(product.itemId)
-            .includes(normalizedFilter)
-        )
-    );
-
-    return [
-      ...startsWithResults,
-      ...containsResults
-    ];
-  }, [productFilter, products]);
+    return [...begins, ...contains];
+  }, [products, searchFilter]);
 
   useEffect(() => {
-    if (!productPopupOpen) {
-      return;
-    }
-
-    if (activeProductRow >= filteredProducts.length) {
-      setActiveProductRow(
-        Math.max(filteredProducts.length - 1, 0)
-      );
-    }
-  }, [
-    activeProductRow,
-    filteredProducts.length,
-    productPopupOpen
-  ]);
+    if (!productPopup) return;
+    setProductIndex(current => Math.min(current, Math.max(filteredProducts.length - 1, 0)));
+  }, [filteredProducts.length, productPopup]);
 
   useEffect(() => {
-    if (!productPopupOpen) {
-      return;
-    }
-
+    if (!productPopup) return;
     requestAnimationFrame(() => {
-      const row =
-        productRowRefs.current[activeProductRow];
-
+      const row = productRows.current[productIndex];
       row?.focus();
-
-      row?.scrollIntoView({
-        block: "nearest"
-      });
+      row?.scrollIntoView({ block: "nearest" });
     });
-  }, [
-    activeProductRow,
-    filteredProducts,
-    productPopupOpen
-  ]);
+  }, [productIndex, productPopup, filteredProducts]);
 
-  useEffect(() => {
-    if (quantityPopupOpen) {
-      requestAnimationFrame(() => {
-        quantityInputRef.current?.focus();
-        quantityInputRef.current?.select();
-      });
-    }
-  }, [quantityPopupOpen]);
-
-  useEffect(() => {
-    if (discountPopupOpen) {
-      requestAnimationFrame(() => {
-        discountInputRef.current?.focus();
-        discountInputRef.current?.select();
-      });
-    }
-  }, [discountPopupOpen]);
-
-  const focusSaleRow = useCallback(
-    requestedIndex => {
-      if (items.length === 0) {
-        setActiveSaleRow(-1);
-        invoiceInputRef.current?.focus();
-        return;
-      }
-
-      const index = Math.max(
-        0,
-        Math.min(requestedIndex, items.length - 1)
-      );
-
-      setActiveSaleRow(index);
-
-      requestAnimationFrame(() => {
-        const row = saleRowRefs.current[index];
-
-        row?.focus();
-
-        row?.scrollIntoView({
-          block: "nearest"
-        });
-      });
-    },
-    [items.length]
-  );
-
-  const openProductPopup = useCallback(() => {
-    if (products.length === 0) {
-      notify(
-        "No products with available inventory were found."
-      );
-
+  const focusSaleRow = useCallback(index => {
+    if (!items.length) {
+      setSaleIndex(-1);
+      invoiceRef.current?.focus();
       return;
     }
+    const next = Math.max(0, Math.min(index, items.length - 1));
+    setSaleIndex(next);
+    requestAnimationFrame(() => saleRows.current[next]?.focus());
+  }, [items.length]);
 
-    setProductSearchBuffer("");
-    setProductFilter("");
-    setActiveProductRow(0);
-    setProductPopupOpen(true);
+  const openProducts = useCallback(() => {
+    if (!products.length) return notify("No products currently have available stock.");
+    setSearchBuffer("");
+    setSearchFilter("");
+    setProductIndex(0);
+    setProductPopup(true);
   }, [notify, products.length]);
 
-  const closeProductPopup = useCallback(() => {
-    setProductPopupOpen(false);
-    setProductSearchBuffer("");
-    setProductFilter("");
-
+  const closeProducts = useCallback((focusIndex = saleIndex) => {
+    setProductPopup(false);
     requestAnimationFrame(() => {
-      if (activeSaleRow >= 0) {
-        saleRowRefs.current[activeSaleRow]?.focus();
-      } else {
-        invoiceInputRef.current?.focus();
-      }
+      if (focusIndex >= 0) saleRows.current[focusIndex]?.focus();
+      else invoiceRef.current?.focus();
     });
-  }, [activeSaleRow]);
+  }, [saleIndex]);
 
-  const addProduct = useCallback(
-    product => {
-      if (!product) {
-        return;
-      }
-
-      let resultingIndex = 0;
-      let stockMessage = "";
-
-      setItems(currentItems => {
-        const existingIndex =
-          currentItems.findIndex(
-            item => item.productId === product.itemId
-          );
-
-        if (existingIndex >= 0) {
-          resultingIndex = existingIndex;
-
-          return currentItems.map((item, index) => {
-            if (index !== existingIndex) {
-              return item;
-            }
-
-            if (item.quantity >= item.available) {
-              stockMessage =
-                `Maximum available quantity is ` +
-                `${item.available}.`;
-
-              return item;
-            }
-
-            return {
-              ...item,
-              quantity: item.quantity + 1
-            };
-          });
-        }
-
-        resultingIndex = currentItems.length;
-
-        return [
-          ...currentItems,
-          {
-            productId: product.itemId,
-            name: product.itemName,
-            priceCentavos: product.priceCentavos,
-            available: product.quantity,
-            quantity: 1,
-            applyDiscount: false,
-
-            // This allows the API to add a future
-            // discountEligible field without requiring
-            // another UI rewrite.
-            discountEligible:
-              product.discountEligible !== false
+  const addProduct = useCallback(product => {
+    if (!product) return;
+    let targetIndex = 0;
+    let warning = "";
+    setItems(current => {
+      const existing = current.findIndex(item => item.productId === product.itemId);
+      if (existing >= 0) {
+        targetIndex = existing;
+        return current.map((item, index) => {
+          if (index !== existing) return item;
+          if (item.quantity >= item.available) {
+            warning = `Maximum available quantity is ${item.available}.`;
+            return item;
           }
-        ];
-      });
-
-      setProductPopupOpen(false);
-      setActiveSaleRow(resultingIndex);
-
-      requestAnimationFrame(() => {
-        saleRowRefs.current[resultingIndex]?.focus();
-      });
-
-      if (stockMessage) {
-        notify(stockMessage);
+          return { ...item, quantity: item.quantity + 1 };
+        });
       }
-    },
-    [notify]
-  );
-
-  const updateSearchBuffer = useCallback(
-    key => {
-      const normalizedKey =
-        normalizeSearchValue(key);
-
-      if (!normalizedKey) {
-        return;
-      }
-
-      const nextBuffer =
-        productSearchBuffer + normalizedKey;
-
-      setProductSearchBuffer(nextBuffer);
-      setProductFilter(nextBuffer);
-      setActiveProductRow(0);
-
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-
-      searchTimeoutRef.current = setTimeout(() => {
-        // Only the key-entry buffer is cleared.
-        // productFilter remains unchanged so the current
-        // search results stay visible.
-        setProductSearchBuffer("");
-      }, SEARCH_RESET_DELAY);
-    },
-    [productSearchBuffer]
-  );
-
-  const handleProductPopupKeyDown =
-    useCallback(
-      event => {
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-
-          setActiveProductRow(current =>
-            Math.min(
-              current + 1,
-              filteredProducts.length - 1
-            )
-          );
-
-          return;
-        }
-
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-
-          setActiveProductRow(current =>
-            Math.max(current - 1, 0)
-          );
-
-          return;
-        }
-
-        if (event.key === "Enter") {
-          event.preventDefault();
-
-          addProduct(
-            filteredProducts[activeProductRow]
-          );
-
-          return;
-        }
-
-        if (
-          event.key === "Escape" ||
-          event.key === "Backspace"
-        ) {
-          event.preventDefault();
-          closeProductPopup();
-          return;
-        }
-
-        if (
-          event.key.length === 1 &&
-          /[a-z0-9]/i.test(event.key)
-        ) {
-          event.preventDefault();
-          updateSearchBuffer(event.key);
-        }
-      },
-      [
-        activeProductRow,
-        addProduct,
-        closeProductPopup,
-        filteredProducts,
-        updateSearchBuffer
-      ]
-    );
-
-  const openQuantityPopup = useCallback(() => {
-    const selectedItem = items[activeSaleRow];
-
-    if (!selectedItem) {
-      return;
-    }
-
-    setQuantityDraft(
-      String(selectedItem.quantity)
-    );
-
-    setQuantityPopupOpen(true);
-  }, [activeSaleRow, items]);
-
-  const closeQuantityPopup = useCallback(() => {
-    setQuantityPopupOpen(false);
-    setQuantityDraft("");
-
-    requestAnimationFrame(() => {
-      saleRowRefs.current[activeSaleRow]?.focus();
+      targetIndex = current.length;
+      return [...current, {
+        productId: product.itemId,
+        name: product.itemName,
+        priceCentavos: product.priceCentavos,
+        available: product.quantity,
+        quantity: 1,
+        applyDiscount: false,
+        discountEligible: product.discountEligible !== false
+      }];
     });
-  }, [activeSaleRow]);
 
-  const saveQuantity = useCallback(() => {
-    const selectedItem = items[activeSaleRow];
+    // Close immediately. The popup key event is also stopped below so Enter cannot reopen it.
+    setProductPopup(false);
+    setSaleIndex(targetIndex);
+    requestAnimationFrame(() => saleRows.current[targetIndex]?.focus());
+    if (warning) notify(warning);
+  }, [notify]);
 
-    if (!selectedItem) {
-      closeQuantityPopup();
+  const typeSearch = useCallback(key => {
+    const next = searchBuffer + clean(key);
+    setSearchBuffer(next);
+    setSearchFilter(next);
+    setProductIndex(0);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setSearchBuffer(""), SEARCH_DELAY_MS);
+  }, [searchBuffer]);
+
+  function handleProductKey(event) {
+    // Critical: prevent the same Enter from reaching the page-level handler.
+    event.stopPropagation();
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setProductIndex(value => Math.min(value + 1, filteredProducts.length - 1));
       return;
     }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setProductIndex(value => Math.max(value - 1, 0));
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addProduct(filteredProducts[productIndex]);
+      return;
+    }
+    if (event.key === "Escape" || event.key === "Backspace") {
+      event.preventDefault();
+      closeProducts();
+      return;
+    }
+    if (event.key.length === 1 && /[a-z0-9]/i.test(event.key)) {
+      event.preventDefault();
+      typeSearch(event.key);
+    }
+  }
 
-    const requestedQuantity =
-      Number.parseInt(quantityDraft, 10);
+  const openQuantity = useCallback(() => {
+    if (!items[saleIndex]) return;
+    setQuantityDraft(String(items[saleIndex].quantity));
+    setQuantityPopup(true);
+    requestAnimationFrame(() => {
+      quantityRef.current?.focus();
+      quantityRef.current?.select();
+    });
+  }, [items, saleIndex]);
 
-    if (
-      !Number.isInteger(requestedQuantity) ||
-      requestedQuantity < 1
-    ) {
+  const closeQuantity = useCallback(() => {
+    setQuantityPopup(false);
+    requestAnimationFrame(() => saleRows.current[saleIndex]?.focus());
+  }, [saleIndex]);
+
+  const commitQuantity = useCallback(() => {
+    const item = items[saleIndex];
+    const requested = Number.parseInt(quantityDraft, 10);
+    if (!item || !Number.isInteger(requested) || requested < 1) {
       notify("Quantity must be at least 1.");
-      quantityInputRef.current?.focus();
       return;
     }
+    const finalQuantity = Math.min(requested, item.available);
+    setItems(current => current.map((value, index) => index === saleIndex
+      ? { ...value, quantity: finalQuantity }
+      : value));
+    if (requested > item.available) notify(`Maximum available quantity is ${item.available}.`);
+    closeQuantity();
+  }, [closeQuantity, items, notify, quantityDraft, saleIndex]);
 
-    const finalQuantity = Math.min(
-      requestedQuantity,
-      selectedItem.available
-    );
+  const toggleDiscount = useCallback(() => {
+    const item = items[saleIndex];
+    if (!item) return;
+    if (!item.discountEligible) return notify(`${item.name} is not eligible for a discount.`);
+    setItems(current => current.map((value, index) => index === saleIndex
+      ? { ...value, applyDiscount: !value.applyDiscount }
+      : value));
+  }, [items, notify, saleIndex]);
 
-    setItems(currentItems =>
-      currentItems.map((item, index) =>
-        index === activeSaleRow
-          ? {
-              ...item,
-              quantity: finalQuantity
-            }
-          : item
-      )
-    );
+  const removeItem = useCallback(() => {
+    if (saleIndex < 0) return;
+    const remaining = items.length - 1;
+    const nextIndex = Math.max(0, saleIndex - 1);
+    setItems(current => current.filter((_, index) => index !== saleIndex));
+    setSaleIndex(remaining ? nextIndex : -1);
+    requestAnimationFrame(() => remaining
+      ? saleRows.current[nextIndex]?.focus()
+      : invoiceRef.current?.focus());
+  }, [items.length, saleIndex]);
 
-    if (
-      requestedQuantity >
-      selectedItem.available
-    ) {
-      notify(
-        `Maximum available quantity is ` +
-        `${selectedItem.available}.`
-      );
-    }
-
-    closeQuantityPopup();
-  }, [
-    activeSaleRow,
-    closeQuantityPopup,
-    items,
-    notify,
-    quantityDraft
-  ]);
-
-  const toggleSelectedDiscount =
-    useCallback(() => {
-      const selectedItem = items[activeSaleRow];
-
-      if (!selectedItem) {
-        return;
-      }
-
-      if (!selectedItem.discountEligible) {
-        notify(
-          `${selectedItem.name} is not eligible ` +
-          `for a discount.`
-        );
-
-        return;
-      }
-
-      setItems(currentItems =>
-        currentItems.map((item, index) =>
-          index === activeSaleRow
-            ? {
-                ...item,
-                applyDiscount:
-                  !item.applyDiscount
-              }
-            : item
-        )
-      );
-    }, [activeSaleRow, items, notify]);
-
-  const removeSelectedItem =
-    useCallback(() => {
-      if (activeSaleRow < 0) {
-        return;
-      }
-
-      const nextFocusIndex = Math.max(
-        activeSaleRow - 1,
-        0
-      );
-
-      setItems(currentItems =>
-        currentItems.filter(
-          (_, index) => index !== activeSaleRow
-        )
-      );
-
-      requestAnimationFrame(() => {
-        if (items.length <= 1) {
-          setActiveSaleRow(-1);
-          invoiceInputRef.current?.focus();
-        } else {
-          focusSaleRow(nextFocusIndex);
-        }
-      });
-    }, [
-      activeSaleRow,
-      focusSaleRow,
-      items.length
-    ]);
-
-  const openDiscountPopup = useCallback(() => {
-    setDiscountDraft(
-      String(discountPercent || 20)
-    );
-
-    setDiscountRemarksDraft(
-      discountRemarks
-    );
-
-    setDiscountPopupOpen(true);
+  const openDiscount = useCallback(() => {
+    setDiscountDraft(String(discountPercent));
+    setRemarksDraft(discountRemarks);
+    setDiscountPopup(true);
+    requestAnimationFrame(() => {
+      discountRef.current?.focus();
+      discountRef.current?.select();
+    });
   }, [discountPercent, discountRemarks]);
 
-  const closeDiscountPopup = useCallback(() => {
-    setDiscountPopupOpen(false);
+  const closeDiscount = useCallback(() => {
+    setDiscountPopup(false);
+    requestAnimationFrame(() => saleIndex >= 0
+      ? saleRows.current[saleIndex]?.focus()
+      : invoiceRef.current?.focus());
+  }, [saleIndex]);
 
-    requestAnimationFrame(() => {
-      if (activeSaleRow >= 0) {
-        saleRowRefs.current[activeSaleRow]?.focus();
-      } else {
-        invoiceInputRef.current?.focus();
-      }
-    });
-  }, [activeSaleRow]);
+  const commitDiscount = useCallback(() => {
+    const percent = Number.parseInt(discountDraft || "20", 10);
+    if (!Number.isInteger(percent) || percent < 0 || percent > 99) {
+      return notify("Discount must be between 0 and 99.");
+    }
+    setDiscountPercent(percent);
+    setDiscountRemarks(remarksDraft.trim());
+    closeDiscount();
+  }, [closeDiscount, discountDraft, notify, remarksDraft]);
 
-  const saveDiscountSettings =
-    useCallback(() => {
-      const value = Number.parseInt(
-        discountDraft || "20",
-        10
-      );
-
-      if (
-        !Number.isInteger(value) ||
-        value < 0 ||
-        value > 99
-      ) {
-        notify(
-          "Discount must be between 0 and 99."
-        );
-
-        discountInputRef.current?.focus();
-        return;
-      }
-
-      setDiscountPercent(value);
-      setDiscountRemarks(
-        discountRemarksDraft.trim()
-      );
-
-      closeDiscountPopup();
-    }, [
-      closeDiscountPopup,
-      discountDraft,
-      discountRemarksDraft,
-      notify
-    ]);
-
-  const clearTransaction = useCallback(() => {
+  const clearSale = useCallback(() => {
     setItems([]);
-    setActiveSaleRow(-1);
+    setSaleIndex(-1);
     setMessage("");
-
     requestAnimationFrame(() => {
-      invoiceInputRef.current?.focus();
-      invoiceInputRef.current?.select();
+      invoiceRef.current?.focus();
+      invoiceRef.current?.select();
     });
   }, []);
 
   const saveSale = useCallback(async () => {
-    if (saving) {
-      return;
-    }
-
+    if (saving) return;
     if (!invoiceNumber.trim()) {
       notify("SI Number is empty.");
-      invoiceInputRef.current?.focus();
-      return;
+      return invoiceRef.current?.focus();
     }
-
-    if (items.length === 0) {
-      notify("Sale has no items.");
-      return;
-    }
-
+    if (!items.length) return notify("Sale has no items.");
     try {
       setSaving(true);
-
-      const response = await api(
-        "/api/sales",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            invoiceNumber,
-            discountPercent,
-            discountRemarks,
-
-            items: items.map(item => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              applyDiscount:
-                item.applyDiscount
-            }))
-          })
-        }
-      );
-
-      setItems([]);
-      setActiveSaleRow(-1);
-
-      setInvoiceNumber(
-        response.sale.nextSuggestedInvoice ||
-        ""
-      );
-
-      notify(
-        `Invoice ${response.sale.invoiceNumber} ` +
-        `was saved successfully.`,
-        "success"
-      );
-
-      await loadProducts();
-
-      requestAnimationFrame(() => {
-        invoiceInputRef.current?.focus();
-        invoiceInputRef.current?.select();
+      const response = await api("/api/sales", {
+        method: "POST",
+        body: JSON.stringify({
+          invoiceNumber,
+          discountPercent,
+          discountRemarks,
+          items: items.map(({ productId, quantity, applyDiscount }) => ({
+            productId, quantity, applyDiscount
+          }))
+        })
       });
+      setItems([]);
+      setSaleIndex(-1);
+      setInvoiceNumber(response.sale.nextSuggestedInvoice || "");
+      notify(`Invoice ${response.sale.invoiceNumber} saved.`, "success");
+      await loadProducts();
+      requestAnimationFrame(() => invoiceRef.current?.focus());
     } catch (error) {
       notify(error.message);
     } finally {
       setSaving(false);
     }
-  }, [
-    discountPercent,
-    discountRemarks,
-    invoiceNumber,
-    items,
-    loadProducts,
-    notify,
-    saving
-  ]);
+  }, [discountPercent, discountRemarks, invoiceNumber, items, loadProducts, notify, saving]);
 
   useEffect(() => {
-    function handleGlobalKeyDown(event) {
-      if (productPopupOpen) {
-        // The popup handles its own keyboard events.
-        return;
-      }
+    function handlePageKey(event) {
+      if (productPopup || quantityPopup || discountPopup) return;
 
-      if (quantityPopupOpen) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          closeQuantityPopup();
-        }
+      if (event.key === "F5") { event.preventDefault(); saveSale(); return; }
+      if (event.key === "F9") { event.preventDefault(); clearSale(); return; }
+      if (event.key === "F10") { event.preventDefault(); navigate("/home"); return; }
+      if (event.key === "F4") { event.preventDefault(); openDiscount(); return; }
 
-        return;
-      }
-
-      if (discountPopupOpen) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          closeDiscountPopup();
-        }
-
-        return;
-      }
-
-      if (event.key === "F5") {
+      if (event.target === invoiceRef.current && event.key === "Enter") {
         event.preventDefault();
-        saveSale();
+        openProducts();
         return;
       }
 
-      if (event.key === "F9") {
-        event.preventDefault();
-        clearTransaction();
-        return;
-      }
-
-      if (event.key === "F10") {
-        event.preventDefault();
-        navigate("/home");
-        return;
-      }
-
-      if (event.key === "F4") {
-        event.preventDefault();
-        openDiscountPopup();
-        return;
-      }
-
-      const target = event.target;
-
-      const targetIsTextInput =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement;
-
-      if (
-        target === invoiceInputRef.current &&
-        event.key === "Enter"
-      ) {
-        event.preventDefault();
-        openProductPopup();
-        return;
-      }
-
-      if (
-        targetIsTextInput &&
-        target !== invoiceInputRef.current
-      ) {
-        return;
-      }
-
-      if (activeSaleRow < 0) {
-        return;
-      }
-
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        focusSaleRow(activeSaleRow + 1);
-        return;
-      }
-
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        focusSaleRow(activeSaleRow - 1);
-        return;
-      }
-
-      if (event.key.toLowerCase() === "q") {
-        event.preventDefault();
-        openQuantityPopup();
-        return;
-      }
-
-      if (event.key.toLowerCase() === "d") {
-        event.preventDefault();
-        toggleSelectedDiscount();
-        return;
-      }
-
-      if (event.key === "F2") {
-        event.preventDefault();
-        removeSelectedItem();
-        return;
-      }
-
-      if (event.key === "Enter") {
-        event.preventDefault();
-        openProductPopup();
-      }
+      if (saleIndex < 0) return;
+      if (event.key === "ArrowDown") { event.preventDefault(); focusSaleRow(saleIndex + 1); }
+      else if (event.key === "ArrowUp") { event.preventDefault(); focusSaleRow(saleIndex - 1); }
+      else if (event.key.toLowerCase() === "q") { event.preventDefault(); openQuantity(); }
+      else if (event.key.toLowerCase() === "d") { event.preventDefault(); toggleDiscount(); }
+      else if (event.key === "F2") { event.preventDefault(); removeItem(); }
+      else if (event.key === "Enter") { event.preventDefault(); openProducts(); }
     }
+    document.addEventListener("keydown", handlePageKey);
+    return () => document.removeEventListener("keydown", handlePageKey);
+  }, [clearSale, discountPopup, focusSaleRow, navigate, openDiscount, openProducts, openQuantity, productPopup, quantityPopup, removeItem, saleIndex, saveSale, toggleDiscount]);
 
-    document.addEventListener(
-      "keydown",
-      handleGlobalKeyDown
-    );
+  const gross = useMemo(() => items.reduce((sum, item) => sum + item.priceCentavos * item.quantity, 0), [items]);
+  const discounts = useMemo(() => items.reduce((sum, item) => item.applyDiscount
+    ? sum + Math.round(item.priceCentavos * item.quantity * discountPercent / 100)
+    : sum, 0), [discountPercent, items]);
+  const total = gross - discounts;
+  const vat = Math.round(total * 12 / 112);
 
-    return () => {
-      document.removeEventListener(
-        "keydown",
-        handleGlobalKeyDown
-      );
-    };
-  }, [
-    activeSaleRow,
-    clearTransaction,
-    closeDiscountPopup,
-    closeQuantityPopup,
-    discountPopupOpen,
-    focusSaleRow,
-    navigate,
-    openDiscountPopup,
-    openProductPopup,
-    openQuantityPopup,
-    productPopupOpen,
-    quantityPopupOpen,
-    removeSelectedItem,
-    saveSale,
-    toggleSelectedDiscount
-  ]);
+  return <Layout title="Encode Sales">
+    <section className={productPopup || quantityPopup || discountPopup ? "sales-screen blurred" : "sales-screen"}>
+      <div className="encode-toolbar">
+        <label>SI <input ref={invoiceRef} value={invoiceNumber} inputMode="numeric"
+          onChange={event => setInvoiceNumber(event.target.value.replace(/\D/g, ""))}
+          placeholder="SI Number" /></label>
+        <span>Discount: <strong>{discountPercent}%</strong></span>
+      </div>
+      <div className="shortcut-help">Enter Items · ↑/↓ Navigate · Q Quantity · D Discount · F2 Remove · F4 Discount Setup · F5 Save · F9 Clear</div>
+      <Notice message={message} type={messageType} />
 
-  const grossTotalCentavos =
-    useMemo(() => {
-      return items.reduce(
-        (total, item) =>
-          total +
-          item.priceCentavos * item.quantity,
-        0
-      );
-    }, [items]);
+      <div className="sale-table-scroll">
+        <table className="sale-table">
+          <thead>
+            <tr><th>Qty</th><th>Description</th><th>Unit Price</th><th>Apply Discount</th><th>Amount</th></tr>
+          </thead>
+          <tbody>
+            {items.map((item, index) => {
+              const lineGross = item.priceCentavos * item.quantity;
+              const lineDiscount = item.applyDiscount ? Math.round(lineGross * discountPercent / 100) : 0;
+              return <tr key={item.productId} ref={node => saleRows.current[index] = node}
+                tabIndex={0} className={index === saleIndex ? "active-keyboard-row" : ""}
+                onFocus={() => setSaleIndex(index)}>
+                <td>{item.quantity}</td><td>{item.name}</td><td>{money(item.priceCentavos)}</td>
+                <td><input type="checkbox" tabIndex={-1} disabled={!item.discountEligible}
+                  checked={item.applyDiscount} readOnly /></td>
+                <td>{money(lineGross - lineDiscount)}</td>
+              </tr>;
+            })}
+          </tbody>
+          <tfoot>
+            <tr><td colSpan={3}></td><th>Subtotal:</th><td>{money(gross)}</td></tr>
+            <tr><td colSpan={3}></td><th>Discounts:</th><td>{money(discounts)}</td></tr>
+            <tr><td colSpan={3}></td><th>VAT (12% included):</th><td>{money(vat)}</td></tr>
+            <tr className="grand-total"><td colSpan={3}></td><th>Total:</th><td>{money(total)}</td></tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
 
-  const discountTotalCentavos =
-    useMemo(() => {
-      return items.reduce(
-        (total, item) => {
-          if (!item.applyDiscount) {
-            return total;
-          }
-
-          const gross =
-            item.priceCentavos * item.quantity;
-
-          return (
-            total +
-            Math.round(
-              gross * discountPercent / 100
-            )
-          );
-        },
-        0
-      );
-    }, [discountPercent, items]);
-
-  const netTotalCentavos =
-    grossTotalCentavos -
-    discountTotalCentavos;
-
-  const vatTotalCentavos =
-    Math.round(
-      netTotalCentavos * 12 / 112
-    );
-
-  return (
-    <Layout title="Encode Sales">
-      <section
-        className={
-          popupOpen
-            ? "sales-encoding blurred"
-            : "sales-encoding"
-        }
-      >
-        <div className="sales-header-row">
-          <label className="si-field">
-            <span>SI</span>
-
-            <input
-              ref={invoiceInputRef}
-              value={invoiceNumber}
-              placeholder="SI Number"
-              inputMode="numeric"
-              onChange={event => {
-                setInvoiceNumber(
-                  event.target.value.replace(
-                    /\D/g,
-                    ""
-                  )
-                );
-              }}
-            />
-          </label>
-
-          <div className="discount-display">
-            Discount:
-            <strong>
-              {discountPercent}%
-            </strong>
-          </div>
-        </div>
-
-        <div className="shortcut-help">
-          Enter: items · ↑/↓: navigate ·
-          Q: quantity · D: discount ·
-          F2: remove · F4: discount settings ·
-          F5: save · F9: clear
-        </div>
-
-        <Notice
-          message={message}
-          type={messageType}
-        />
-
-        <div className="sales-table-container">
-          <table className="sales-encode-table">
-            <thead>
-              <tr>
-                <th>Qty</th>
-                <th>Description</th>
-                <th>Unit Price</th>
-                <th>Apply Discount</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-
+    {productPopup && <div className="encode-modal" role="dialog" aria-modal="true" onKeyDown={handleProductKey}>
+      <section className="product-picker">
+        <header className="picker-status">
+          <span>Filter: <strong>{searchFilter || "All items"}</strong></span>
+          <span>Keys: <strong>{searchBuffer || "—"}</strong></span>
+          <b>{filteredProducts[productIndex] ? money(filteredProducts[productIndex].priceCentavos) : money(0)}</b>
+        </header>
+        <div className="picker-scroll">
+          <table className="picker-table">
+            <thead><tr><th>Description</th><th>Price</th><th>Item Code</th><th>Available</th></tr></thead>
             <tbody>
-              {items.map((item, index) => {
-                const gross =
-                  item.priceCentavos *
-                  item.quantity;
-
-                const discount =
-                  item.applyDiscount
-                    ? Math.round(
-                        gross *
-                        discountPercent /
-                        100
-                      )
-                    : 0;
-
-                const amount =
-                  gross - discount;
-
-                return (
-                  <tr
-                    key={item.productId}
-                    ref={element => {
-                      saleRowRefs.current[index] =
-                        element;
-                    }}
-                    tabIndex={0}
-                    className={
-                      index === activeSaleRow
-                        ? "active-keyboard-row"
-                        : ""
-                    }
-                    onFocus={() => {
-                      setActiveSaleRow(index);
-                    }}
-                  >
-                    <td>{item.quantity}</td>
-
-                    <td>{item.name}</td>
-
-                    <td>
-                      {money(
-                        item.priceCentavos
-                      )}
-                    </td>
-
-                    <td>
-                      <input
-                        type="checkbox"
-                        tabIndex={-1}
-                        disabled={
-                          !item.discountEligible
-                        }
-                        checked={
-                          item.applyDiscount
-                        }
-                        onChange={() => {
-                          setActiveSaleRow(index);
-
-                          if (
-                            !item.discountEligible
-                          ) {
-                            return;
-                          }
-
-                          setItems(
-                            currentItems =>
-                              currentItems.map(
-                                (
-                                  currentItem,
-                                  currentIndex
-                                ) =>
-                                  currentIndex ===
-                                  index
-                                    ? {
-                                        ...currentItem,
-                                        applyDiscount:
-                                          !currentItem
-                                            .applyDiscount
-                                      }
-                                    : currentItem
-                              )
-                          );
-                        }}
-                      />
-                    </td>
-
-                    <td>
-                      {money(amount)}
-                    </td>
-                  </tr>
-                );
-              })}
-
-              <tr className="summary-row">
-                <td colSpan={3} />
-                <td>Subtotal:</td>
-                <td>
-                  {money(
-                    grossTotalCentavos
-                  )}
-                </td>
-              </tr>
-
-              <tr className="summary-row">
-                <td colSpan={3} />
-                <td>Discounts:</td>
-                <td>
-                  {money(
-                    discountTotalCentavos
-                  )}
-                </td>
-              </tr>
-
-              <tr className="summary-row">
-                <td colSpan={3} />
-                <td>VAT (12% included):</td>
-                <td>
-                  {money(
-                    vatTotalCentavos
-                  )}
-                </td>
-              </tr>
-
-              <tr className="summary-row total-row">
-                <td colSpan={3} />
-                <td>Total:</td>
-                <td>
-                  {money(
-                    netTotalCentavos
-                  )}
-                </td>
-              </tr>
+              {filteredProducts.map((product, index) => <tr key={product.itemId}
+                ref={node => productRows.current[index] = node} tabIndex={0}
+                className={index === productIndex ? "active-keyboard-row" : ""}
+                onFocus={() => setProductIndex(index)} onDoubleClick={() => addProduct(product)}>
+                <td>{product.itemName}</td><td>{money(product.priceCentavos)}</td><td>{product.itemId}</td><td>{product.quantity}</td>
+              </tr>)}
+              {!filteredProducts.length && <tr><td colSpan={4}>No matching products</td></tr>}
             </tbody>
           </table>
         </div>
+        <footer>Type to filter · ↑/↓ Navigate · Enter Add · Escape/Backspace Close</footer>
       </section>
+    </div>}
 
-      {productPopupOpen && (
-        <div
-          className="encoding-popup-backdrop"
-          onKeyDown={
-            handleProductPopupKeyDown
-          }
-        >
-          <section
-            className="product-popup"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Select product"
-          >
-            <div className="product-popup-search">
-              <div>
-                Search:
-                <strong>
-                  {productFilter || "All items"}
-                </strong>
-              </div>
+    {quantityPopup && <div className="encode-modal" role="dialog" aria-modal="true">
+      <section className="entry-dialog"><h2>Enter Quantity</h2><b>{items[saleIndex]?.name}</b>
+        <input ref={quantityRef} value={quantityDraft} inputMode="numeric"
+          onChange={event => setQuantityDraft(event.target.value.replace(/\D/g, "").slice(0, 4))}
+          onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter") commitQuantity(); if (event.key === "Escape") closeQuantity(); }} />
+        <span>Available: {items[saleIndex]?.available || 0}</span>
+      </section>
+    </div>}
 
-              <div>
-                Current keys:
-                <strong>
-                  {productSearchBuffer || "—"}
-                </strong>
-              </div>
-            </div>
-
-            <div className="product-popup-price">
-              {filteredProducts[
-                activeProductRow
-              ]
-                ? money(
-                    filteredProducts[
-                      activeProductRow
-                    ].priceCentavos
-                  )
-                : money(0)}
-            </div>
-
-            <div className="product-popup-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Description</th>
-                    <th>Price</th>
-                    <th>Item Code</th>
-                    <th>Available</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filteredProducts.map(
-                    (product, index) => (
-                      <tr
-                        key={product.itemId}
-                        ref={element => {
-                          productRowRefs
-                            .current[index] =
-                            element;
-                        }}
-                        tabIndex={0}
-                        className={
-                          index ===
-                          activeProductRow
-                            ? "active-keyboard-row"
-                            : ""
-                        }
-                        onFocus={() => {
-                          setActiveProductRow(
-                            index
-                          );
-                        }}
-                        onDoubleClick={() => {
-                          addProduct(product);
-                        }}
-                      >
-                        <td>
-                          {product.itemName}
-                        </td>
-
-                        <td>
-                          {money(
-                            product
-                              .priceCentavos
-                          )}
-                        </td>
-
-                        <td>
-                          {product.itemId}
-                        </td>
-
-                        <td>
-                          {product.quantity}
-                        </td>
-                      </tr>
-                    )
-                  )}
-
-                  {filteredProducts.length ===
-                    0 && (
-                    <tr>
-                      <td colSpan={4}>
-                        No matching products
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="popup-help">
-              Type to filter · ↑/↓ navigate ·
-              Enter add · Escape or Backspace close
-            </div>
-          </section>
-        </div>
-      )}
-
-      {quantityPopupOpen && (
-        <div className="encoding-popup-backdrop">
-          <section
-            className="small-entry-popup"
-            role="dialog"
-            aria-modal="true"
-          >
-            <h2>Enter Quantity</h2>
-
-            <div className="selected-item-name">
-              {items[activeSaleRow]?.name}
-            </div>
-
-            <input
-              ref={quantityInputRef}
-              value={quantityDraft}
-              inputMode="numeric"
-              onChange={event => {
-                setQuantityDraft(
-                  event.target.value
-                    .replace(/\D/g, "")
-                    .slice(0, 4)
-                );
-              }}
-              onKeyDown={event => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  saveQuantity();
-                }
-
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  closeQuantityPopup();
-                }
-              }}
-            />
-
-            <div>
-              Available:
-              {" "}
-              {items[activeSaleRow]?.available ||
-                0}
-            </div>
-          </section>
-        </div>
-      )}
-
-      {discountPopupOpen && (
-        <div className="encoding-popup-backdrop">
-          <section
-            className="small-entry-popup"
-            role="dialog"
-            aria-modal="true"
-          >
-            <h2>Discount Settings</h2>
-
-            <label>
-              Discount percentage
-
-              <input
-                ref={discountInputRef}
-                value={discountDraft}
-                inputMode="numeric"
-                placeholder="20"
-                onChange={event => {
-                  setDiscountDraft(
-                    event.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 2)
-                  );
-                }}
-                onKeyDown={event => {
-                  if (
-                    event.key === "Enter"
-                  ) {
-                    event.preventDefault();
-
-                    discountRemarksRef
-                      .current
-                      ?.focus();
-                  }
-
-                  if (
-                    event.key === "Escape"
-                  ) {
-                    event.preventDefault();
-                    closeDiscountPopup();
-                  }
-                }}
-              />
-            </label>
-
-            <label>
-              Remarks
-
-              <input
-                ref={discountRemarksRef}
-                value={
-                  discountRemarksDraft
-                }
-                placeholder="Remarks"
-                onChange={event => {
-                  setDiscountRemarksDraft(
-                    event.target.value
-                  );
-                }}
-                onKeyDown={event => {
-                  if (
-                    event.key === "Enter"
-                  ) {
-                    event.preventDefault();
-                    saveDiscountSettings();
-                  }
-
-                  if (
-                    event.key === "Escape"
-                  ) {
-                    event.preventDefault();
-                    closeDiscountPopup();
-                  }
-                }}
-              />
-            </label>
-
-            <div className="popup-help">
-              Enter after remarks to apply
-            </div>
-          </section>
-        </div>
-      )}
-    </Layout>
-  );
+    {discountPopup && <div className="encode-modal" role="dialog" aria-modal="true">
+      <section className="entry-dialog"><h2>Discount Settings</h2>
+        <label>Percentage<input ref={discountRef} value={discountDraft} inputMode="numeric"
+          onChange={event => setDiscountDraft(event.target.value.replace(/\D/g, "").slice(0, 2))}
+          onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter") remarksRef.current?.focus(); if (event.key === "Escape") closeDiscount(); }} /></label>
+        <label>Remarks<input ref={remarksRef} value={remarksDraft}
+          onChange={event => setRemarksDraft(event.target.value)}
+          onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter") commitDiscount(); if (event.key === "Escape") closeDiscount(); }} /></label>
+      </section>
+    </div>}
+  </Layout>;
 }
