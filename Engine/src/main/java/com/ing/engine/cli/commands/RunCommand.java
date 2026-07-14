@@ -128,22 +128,30 @@ public class RunCommand implements Callable<Integer> {
             return 1;
         }
 
-        File testCaseCsv = new File(projectDir, "TestPlan/" + group + "/" + name + ".csv");
-        File testSetCsv = new File(projectDir, "TestLab/" + group + "/" + name + ".csv");
-        boolean isTestCase = testCaseCsv.isFile();
-        boolean isTestSet = testSetCsv.isFile();
+        File testCaseFile = resolveExecutableFile(projectDir, "TestPlan/" + group, name);
+
+        File testSetFile = resolveExecutableFile(projectDir, "TestLab/" + group, name);
+
+        boolean isTestCase = testCaseFile != null;
+        boolean isTestSet = testSetFile != null;
 
         if (isTestCase && isTestSet) {
             cli.printError("Ambiguous: path matches both a test case and a test set.");
-            cli.printInfo("  TestCase: " + testCaseCsv.getPath());
-            cli.printInfo("  TestSet : " + testSetCsv.getPath());
+            cli.printInfo("  TestCase: " + testCaseFile.getPath());
+            cli.printInfo("  TestSet : " + testSetFile.getPath());
             cli.printInfo("Use 'ingenious run testcase' or 'ingenious run testset' explicitly.");
             return 1;
         }
         if (!isTestCase && !isTestSet) {
             cli.printError("Not found as a test case or test set.");
-            cli.printInfo("  Tried: " + testCaseCsv.getPath());
-            cli.printInfo("  Tried: " + testSetCsv.getPath());
+            cli.printInfo(
+                "  Tried: " +
+                new File(projectDir, "TestPlan/" + group + "/" + name + ".{yaml,yml,csv}").getPath()
+            );
+            cli.printInfo(
+                "  Tried: " +
+                new File(projectDir, "TestLab/" + group + "/" + name + ".{yaml,yml,csv}").getPath()
+            );
             return 1;
         }
 
@@ -203,6 +211,35 @@ public class RunCommand implements Callable<Integer> {
             cli.printError("Execution failed: " + e.getMessage());
             return 1;
         }
+    }
+
+    /**
+     * Resolves an executable test case or test set, preferring YAML over the
+     * legacy CSV format.
+     */
+    private static File resolveExecutableFile(
+        File projectDir,
+        String relativeDirectory,
+        String baseName
+    ) {
+        File directory = new File(projectDir, relativeDirectory);
+
+        File yaml = new File(directory, baseName + ".yaml");
+        if (yaml.isFile()) {
+            return yaml;
+        }
+
+        File yml = new File(directory, baseName + ".yml");
+        if (yml.isFile()) {
+            return yml;
+        }
+
+        File csv = new File(directory, baseName + ".csv");
+        if (csv.isFile()) {
+            return csv;
+        }
+
+        return null;
     }
 
     /**
