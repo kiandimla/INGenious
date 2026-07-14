@@ -3,7 +3,7 @@ package com.ing.engine.cli.commands;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ing.engine.cli.INGeniousCLI;
-import java.io.File;
+import com.ing.engine.constants.AppResourcePath;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.*;
@@ -119,7 +119,9 @@ public class RunCommand implements Callable<Integer> {
             cli.printInfo(
                 "Looked in: ./" +
                 projectName +
-                ", ./Projects/" +
+                ", " +
+                AppResourcePath.getProjectsPath() +
+                File.separator +
                 projectName +
                 ", and as an absolute path."
             );
@@ -211,19 +213,38 @@ public class RunCommand implements Callable<Integer> {
      * Returns {@code null} if none of those resolve to a directory.
      */
     private static File resolveProjectDir(String name) {
-        File abs = new File(name);
-        if (abs.isAbsolute() && abs.isDirectory()) {
-            return abs;
+        /*
+         * An explicitly supplied absolute project path always takes
+         * precedence.
+         */
+        File absolutePath = new File(name);
+        if (absolutePath.isAbsolute() && absolutePath.isDirectory()) {
+            return absolutePath;
         }
-        String cwd = System.getProperty("user.dir");
-        File rel = new File(cwd, name);
-        if (rel.isDirectory()) {
-            return rel;
+
+        /*
+         * Preserve support for a project path relative to the current
+         * terminal directory.
+         */
+        File currentDirectory = new File(System.getProperty("user.dir"));
+        File relativePath = new File(currentDirectory, name);
+        if (relativePath.isDirectory()) {
+            return relativePath;
         }
-        File underProjects = new File(cwd, "Projects/" + name);
-        if (underProjects.isDirectory()) {
-            return underProjects;
+
+        /*
+         * Normal named-project lookup uses the external Workspace.
+         *
+         * The Workspace root directly contains:
+         *   Projects/
+         *   Shared/
+         *   Configuration/
+         */
+        File workspaceProject = new File(AppResourcePath.getProjectsPath(), name);
+        if (workspaceProject.isDirectory()) {
+            return workspaceProject;
         }
+
         return null;
     }
 
