@@ -1,5 +1,6 @@
 package com.ing.ide.main.ui;
 
+import com.ing.engine.constants.AppResourcePath;
 import com.ing.engine.support.methodInf.MethodInfoManager;
 import com.ing.exceptions.DuplicateMethodException;
 import com.ing.ide.main.help.Help;
@@ -114,7 +115,7 @@ public class InjectScript extends javax.swing.JFrame {
 
     private void loadSampleScript() {
         try {
-            File file = new File("Configuration" + File.separator + "SampleScript.java");
+            File file = new File(AppResourcePath.getConfigurationPath(), "SampleScript.java");
             if (file.exists()) {
                 sampleCode = FileUtils.readFileToString(file, Charset.defaultCharset());
             } else {
