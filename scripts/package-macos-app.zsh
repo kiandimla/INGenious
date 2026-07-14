@@ -5,6 +5,9 @@ set -euo pipefail
 readonly SCRIPT_DIR="${0:A:h}"
 readonly REPO_ROOT="${SCRIPT_DIR:h}"
 readonly RELEASE="$REPO_ROOT/Dist/release"
+readonly RELEASE_RUNTIME="$RELEASE/Runtime"
+readonly RELEASE_WORKSPACE="$RELEASE/Workspace"
+readonly RELEASE_APP="$RELEASE/INGenious.app"
 readonly INPUT="$REPO_ROOT/Dist/target/jpackage/input"
 readonly OUTPUT="$REPO_ROOT/Dist/target/jpackage/output"
 readonly GUI_APP="$OUTPUT/INGenious.app"
@@ -31,8 +34,14 @@ print -- ""
 [[ -d "$RELEASE" ]] ||
   fail "Release directory does not exist: $RELEASE"
 
-[[ -f "$RELEASE/ingenious-ide-3.0.0.jar" ]] ||
-  fail "Release is missing ingenious-ide-3.0.0.jar"
+[[ -d "$RELEASE_RUNTIME" ]] ||
+  fail "Release Runtime directory does not exist: $RELEASE_RUNTIME"
+
+[[ -d "$RELEASE_WORKSPACE" ]] ||
+  fail "Release Workspace directory does not exist: $RELEASE_WORKSPACE"
+
+[[ -f "$RELEASE_RUNTIME/ingenious-ide-3.0.0.jar" ]] ||
+  fail "Release Runtime is missing ingenious-ide-3.0.0.jar"
 
 /usr/libexec/java_home -v 17 >/dev/null 2>&1 ||
   fail "A Java 17 JDK could not be located"
@@ -55,7 +64,7 @@ print -- "[1/5] Recreating jpackage input"
 
 rm -rf -- "$INPUT"
 mkdir -p -- "$INPUT"
-ditto "$RELEASE" "$INPUT"
+ditto "$RELEASE_RUNTIME" "$INPUT"
 
 print -- ""
 print -- "[2/5] Validating staged resources"
@@ -93,6 +102,22 @@ fi
 
 print -- "OK: exactly one Engine JAR at ${engine_jars[1]}"
 
+for item in \
+  "$INPUT/Workspace" \
+  "$INPUT/Projects" \
+  "$INPUT/Shared" \
+  "$INPUT/Configuration" \
+  "$INPUT/ingenious" \
+  "$INPUT/ingenious.bat" \
+  "$INPUT/ingenious.command" \
+  "$INPUT/Readme.md"
+do
+  [[ ! -e "$item" ]] ||
+    fail "Traditional release content must not be packaged inside the app: $item"
+done
+
+print -- "OK: Workspace and traditional launchers are excluded from the app input"
+
 print -- ""
 print -- "[3/5] Recreating the macOS app-image"
 
@@ -110,6 +135,7 @@ mkdir -p -- "$OUTPUT"
   --main-jar ingenious-ide-3.0.0.jar \
   --main-class com.ing.ide.main.Main \
   --java-options '-Dingenious.app.home=$APPDIR' \
+  --java-options '-Dingenious.workspace=$APPDIR/../../../Workspace' \
   --java-options "-Xms128m" \
   --java-options "-Xmx1024m" \
   --java-options "-Dfile.encoding=UTF-8" \
@@ -165,6 +191,9 @@ fi
 grep -Fq 'java-options=-Dingenious.app.home=$APPDIR' "$CFG" ||
   fail "Finder-safe ingenious.app.home option is missing"
 
+grep -Fq 'java-options=-Dingenious.workspace=$APPDIR/../../../Workspace' "$CFG" ||
+  fail "Sibling ingenious.workspace option is missing"
+
 grep -Fq 'app.mainclass=com.ing.ide.main.Main' "$CFG" ||
   fail "GUI main class is missing from launcher configuration"
 
@@ -185,12 +214,26 @@ print -- "$jvm_info"
 
 codesign --verify --deep --strict --verbose=2 "$GUI_APP"
 
+rm -rf -- "$RELEASE_APP"
+ditto "$GUI_APP" "$RELEASE_APP"
+
+[[ -d "$RELEASE_APP" ]] ||
+  fail "Generated app was not copied into the release: $RELEASE_APP"
+
+[[ -d "$RELEASE_APP/Contents/app" ]] ||
+  fail "Release app is missing Contents/app"
+
+[[ ! -e "$RELEASE_APP/Contents/app/Workspace" ]] ||
+  fail "Workspace must remain outside the application bundle"
+
+print -- "OK: INGenious.app added to the existing release"
+
 print -- ""
 print -- "[5/5] macOS app-image completed successfully"
 print -- ""
 print -- "Application:"
 print -- "  $GUI_APP"
 print -- ""
-print -- "Default Finder Workspace:"
-print -- "  $HOME/INGenious/Workspace"
+print -- "Application Workspace:"
+print -- "  $RELEASE_WORKSPACE"
 print -- ""

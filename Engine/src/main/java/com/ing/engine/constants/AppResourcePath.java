@@ -1,5 +1,7 @@
 package com.ing.engine.constants;
 
+import com.ing.datalib.util.RuntimePath;
+import com.ing.datalib.util.WorkspacePath;
 import com.ing.engine.core.RunManager;
 import com.ing.engine.reporting.util.DateTimeUtils;
 import java.io.File;
@@ -84,13 +86,7 @@ public class AppResourcePath {
      * -Dingenious.app.home with the location of its Contents/app directory.
      */
     public static String getAppRoot() {
-        String configuredPath = System.getProperty(APP_HOME_PROPERTY);
-
-        if (configuredPath != null && !configuredPath.isBlank()) {
-            return canonicalPath(configuredPath);
-        }
-
-        return canonicalPath(System.getProperty("user.dir"));
+        return RuntimePath.getAppRoot();
     }
 
     /**
@@ -100,39 +96,7 @@ public class AppResourcePath {
      * Configuration.
      */
     public static String getWorkspaceRoot() {
-        String configuredPath = System.getProperty(WORKSPACE_PROPERTY);
-
-        if (configuredPath != null && !configuredPath.isBlank()) {
-            return canonicalPath(configuredPath);
-        }
-
-        String environmentPath = System.getenv(WORKSPACE_ENVIRONMENT);
-
-        if (environmentPath != null && !environmentPath.isBlank()) {
-            return canonicalPath(environmentPath);
-        }
-
-        /*
-         * A jpackage launcher supplies ingenious.app.home. Finder launches do
-         * not normally inherit Terminal environment variables, so packaged
-         * applications need a writable default outside the application bundle.
-         */
-        String appHome = System.getProperty(APP_HOME_PROPERTY);
-        if (appHome != null && !appHome.isBlank()) {
-            return canonicalPath(
-                System.getProperty("user.home") +
-                File.separator +
-                "INGenious" +
-                File.separator +
-                "Workspace"
-            );
-        }
-
-        /*
-         * Backward compatibility for the existing ZIP distribution, where
-         * Projects, Shared, and Configuration are under the working directory.
-         */
-        return canonicalPath(System.getProperty("user.dir"));
+        return WorkspacePath.getWorkspaceRoot();
     }
 
     /**
@@ -166,7 +130,7 @@ public class AppResourcePath {
     }
 
     public static String getPropertiesPath() {
-        return getAppRoot() + File.separator + CONFIG + File.separator + GLOBAL_PROPERTIES;
+        return getConfigurationPath() + File.separator + GLOBAL_PROPERTIES;
     }
 
     public static String getConfigurationPath() {
