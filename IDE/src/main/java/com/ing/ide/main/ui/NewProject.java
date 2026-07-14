@@ -31,9 +31,7 @@ public class NewProject extends javax.swing.JDialog {
                 Utils.getIconByResourceName("/ui/resources/main/NewProject")
             )
         );
-        String currDirectory = new File(System.getProperty("user.dir")).getCanonicalPath() +
-        File.separator +
-        "Projects";
+        String currDirectory = AppResourcePath.getProjectsPath();
         fileChooser.setCurrentDirectory(new File(currDirectory));
         projLocation.setText(fileChooser.getCurrentDirectory().getAbsolutePath());
     }

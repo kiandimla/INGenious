@@ -1,5 +1,6 @@
 package com.ing.engine.support.reflect;
 
+import com.ing.engine.constants.AppResourcePath;
 import com.ing.engine.constants.FilePath;
 import com.ing.engine.plugin.loader.PluginLoader;
 import java.io.File;
@@ -109,7 +110,7 @@ public class Discovery {
         try {
             packages = null;
             Properties prop = new Properties();
-            File file = new File("Configuration", "package.properties");
+            File file = new File(AppResourcePath.getPropertiesPath("package.properties"));
             if (file.exists()) {
                 prop.load(new FileInputStream(file));
                 if (prop.containsKey("actions")) {
