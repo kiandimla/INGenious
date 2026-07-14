@@ -1,0 +1,2 @@
+import{Link,useNavigate}from'react-router-dom';import{useAuth}from'../context/AuthContext';
+export default function Layout({title,children}){const{user,logout}=useAuth(),nav=useNavigate();async function out(){await logout();nav('/login')}return <><header><Link className="brand" to="/home">PhIMS</Link><b>{title}</b><div><span>{user?.name}</span><button className="link" onClick={out}>Sign out</button></div></header><main>{children}</main></>}

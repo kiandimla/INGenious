@@ -1,0 +1,2 @@
+const express=require('express');const{requireAdmin}=require('../middleware/auth');
+function createReportRoutes(c){const r=express.Router();r.get('/sales',c.sales);r.get('/profit',requireAdmin,c.profit);r.get('/deliveries',c.deliveries);r.get('/item-performance',c.itemPerformance);r.get('/stock-card',c.stockCard);r.get('/item-aging',c.itemAging);r.get('/optimal-orders',c.optimalOrders);r.get('/records',c.records);return r;}module.exports={createReportRoutes};

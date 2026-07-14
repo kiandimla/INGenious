@@ -1,0 +1,11 @@
+const path = require('path');
+const { openDatabase } = require('./database');
+const root = path.resolve(__dirname, '..', '..');
+const dbPath = path.resolve(process.env.PHIMS_DB_PATH || path.join(root, 'data', 'phims.sqlite3'));
+const db = openDatabase(dbPath);
+const integrity = db.pragma('integrity_check', { simple: true });
+const foreignKeys = db.pragma('foreign_key_check');
+const products = db.prepare('SELECT COUNT(*) AS count FROM products').get().count;
+console.log(JSON.stringify({ dbPath, integrity, foreignKeyErrors: foreignKeys, products }, null, 2));
+db.close();
+if (integrity !== 'ok' || foreignKeys.length) process.exitCode = 1;

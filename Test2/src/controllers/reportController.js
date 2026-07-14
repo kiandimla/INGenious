@@ -1,0 +1,2 @@
+function createReportController(s){const wrap=fn=>(req,res,next)=>{try{res.json({report:fn(req.query)});}catch(e){next(e);}};return{sales:wrap(s.sales),profit:wrap(s.profit),deliveries:wrap(s.deliveries),itemPerformance:wrap(s.itemPerformance),stockCard:wrap(s.stockCard),itemAging:wrap(s.itemAging),optimalOrders:wrap(s.optimalOrders),records:wrap(s.records)};}
+module.exports={createReportController};

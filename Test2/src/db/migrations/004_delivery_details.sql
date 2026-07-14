@@ -1,0 +1,5 @@
+ALTER TABLE deliveries ADD COLUMN supplier TEXT NOT NULL DEFAULT '';
+ALTER TABLE deliveries ADD COLUMN purpose TEXT NOT NULL DEFAULT 'DELIVERIES'
+  CHECK (purpose IN ('DELIVERIES', 'ADJUSTMENT', 'PCOUNT', 'TRANSFER'));
+ALTER TABLE deliveries ADD COLUMN remarks TEXT NOT NULL DEFAULT '';
+CREATE INDEX deliveries_invoice_idx ON deliveries(invoice_number COLLATE NOCASE);

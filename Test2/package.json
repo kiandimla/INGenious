@@ -1,0 +1,31 @@
+{
+  "name": "phims-offline",
+  "version": "1.0.0",
+  "private": true,
+  "main": "app.js",
+  "scripts": {
+    "prestart": "npm run client:build",
+    "start": "node app.js",
+    "db:migrate": "node src/db/migrate-cli.js",
+    "db:verify": "node src/db/verify.js",
+    "user:create-admin": "node src/db/create-admin.js",
+    "client:install": "npm install --prefix client",
+    "client:build": "npm run build --prefix client",
+    "build": "npm run client:build",
+    "start:full": "npm run client:build && node app.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@picocss/pico": "^2.1.1",
+    "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^11.10.0",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "helmet": "^8.1.0"
+  },
+  "devDependencies": {
+    "prettier": "3.9.5"
+  }
+}
