@@ -113,6 +113,22 @@ public class AppResourcePath {
         }
 
         /*
+         * A jpackage launcher supplies ingenious.app.home. Finder launches do
+         * not normally inherit Terminal environment variables, so packaged
+         * applications need a writable default outside the application bundle.
+         */
+        String appHome = System.getProperty(APP_HOME_PROPERTY);
+        if (appHome != null && !appHome.isBlank()) {
+            return canonicalPath(
+                System.getProperty("user.home") +
+                File.separator +
+                "INGenious" +
+                File.separator +
+                "Workspace"
+            );
+        }
+
+        /*
          * Backward compatibility for the existing ZIP distribution, where
          * Projects, Shared, and Configuration are under the working directory.
          */
