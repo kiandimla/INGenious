@@ -172,6 +172,41 @@
                 </plugins>
             </build>
         </profile>
+        <!-- Build the macOS app-image with -Pmacos -->
+        <profile>
+            <id>macos</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>package-macos-app</id>
+                                <phase>install</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>/bin/zsh</executable>
+                                    <arguments>
+                                        <argument>${maven.multiModuleProjectDirectory}/scripts/package-macos-app.zsh</argument>
+                                    </arguments>
+                                    <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
         <!-- Optional npm install - activate with -Pnpm-install when needed -->
         <profile>
             <id>npm-install</id>

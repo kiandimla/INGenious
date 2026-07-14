@@ -1,0 +1,196 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="${0:A:h}"
+readonly REPO_ROOT="${SCRIPT_DIR:h}"
+readonly RELEASE="$REPO_ROOT/Dist/release"
+readonly INPUT="$REPO_ROOT/Dist/target/jpackage/input"
+readonly OUTPUT="$REPO_ROOT/Dist/target/jpackage/output"
+readonly GUI_APP="$OUTPUT/INGenious.app"
+readonly APP_DIR="$GUI_APP/Contents/app"
+readonly CFG="$APP_DIR/INGenious.cfg"
+readonly LAUNCHER="$GUI_APP/Contents/MacOS/INGenious"
+readonly JVM_LIBRARY="$GUI_APP/Contents/runtime/Contents/Home/lib/server/libjvm.dylib"
+
+fail() {
+  print -u2 -- "ERROR: $1"
+  exit 1
+}
+
+print -- ""
+print -- "========================================"
+print -- " INGenious macOS app-image packaging"
+print -- "========================================"
+print -- "Repository: $REPO_ROOT"
+print -- ""
+
+[[ "$(uname -s)" == "Darwin" ]] ||
+  fail "The macOS app-image can only be built on macOS"
+
+[[ -d "$RELEASE" ]] ||
+  fail "Release directory does not exist: $RELEASE"
+
+[[ -f "$RELEASE/ingenious-ide-3.0.0.jar" ]] ||
+  fail "Release is missing ingenious-ide-3.0.0.jar"
+
+/usr/libexec/java_home -v 17 >/dev/null 2>&1 ||
+  fail "A Java 17 JDK could not be located"
+
+JPACKAGE_HOME="$(/usr/libexec/java_home -v 17)"
+readonly JPACKAGE_HOME
+readonly JPACKAGE="$JPACKAGE_HOME/bin/jpackage"
+
+[[ -x "$JPACKAGE" ]] ||
+  fail "Java 17 jpackage is missing or not executable: $JPACKAGE"
+
+jpackage_version="$("$JPACKAGE" --version 2>&1)"
+[[ "$jpackage_version" == 17* ]] ||
+  fail "Expected jpackage 17, but detected: $jpackage_version"
+
+print -- "Using jpackage $jpackage_version from:"
+print -- "  $JPACKAGE"
+
+print -- "[1/5] Recreating jpackage input"
+
+rm -rf -- "$INPUT"
+mkdir -p -- "$INPUT"
+ditto "$RELEASE" "$INPUT"
+
+print -- ""
+print -- "[2/5] Validating staged resources"
+
+for item in \
+  "$INPUT/lib" \
+  "$INPUT/Engine" \
+  "$INPUT/plugins" \
+  "$INPUT/Tools" \
+  "$INPUT/web" \
+  "$INPUT/ingenious-ide-3.0.0.jar"
+do
+  [[ -e "$item" ]] ||
+    fail "Required staged resource is missing: $item"
+
+  print -- "OK: $item"
+done
+
+engine_jars=(
+  "${(@f)$(find "$INPUT" -type f -name 'ingenious-engine-3.0.0.jar' -print)}"
+)
+
+if (( ${#engine_jars[@]} != 1 )); then
+  print -u2 -- "Unexpected Engine JAR count: ${#engine_jars[@]}"
+
+  for item in "${engine_jars[@]}"; do
+    print -u2 -- "$item"
+  done
+
+  fail "Expected exactly one ingenious-engine-3.0.0.jar"
+fi
+
+[[ "${engine_jars[1]}" == "$INPUT/lib/ingenious-engine-3.0.0.jar" ]] ||
+  fail "Engine JAR is not in the required input/lib location"
+
+print -- "OK: exactly one Engine JAR at ${engine_jars[1]}"
+
+print -- ""
+print -- "[3/5] Recreating the macOS app-image"
+
+rm -rf -- "$OUTPUT"
+mkdir -p -- "$OUTPUT"
+
+"$JPACKAGE" \
+  --type app-image \
+  --name INGenious \
+  --app-version 3.0.0 \
+  --vendor "ING" \
+  --description "INGenious Playwright Studio" \
+  --input "$INPUT" \
+  --dest "$OUTPUT" \
+  --main-jar ingenious-ide-3.0.0.jar \
+  --main-class com.ing.ide.main.Main \
+  --java-options '-Dingenious.app.home=$APPDIR' \
+  --java-options "-Xms128m" \
+  --java-options "-Xmx1024m" \
+  --java-options "-Dfile.encoding=UTF-8" \
+  --java-options "-Djdk.httpclient.allowRestrictedHeaders=host,connection,content-length,upgrade,expect,via,date,accept-encoding" \
+  --mac-package-identifier com.ing.ingenious \
+  --mac-package-name INGenious \
+  --verbose
+
+[[ -d "$GUI_APP" ]] ||
+  fail "jpackage did not create $GUI_APP"
+
+print -- ""
+print -- "[4/5] Validating the generated application"
+
+[[ -x "$LAUNCHER" ]] ||
+  fail "Native launcher is missing or not executable: $LAUNCHER"
+
+[[ -f "$JVM_LIBRARY" ]] ||
+  fail "Bundled JVM library is missing: $JVM_LIBRARY"
+
+[[ -f "$CFG" ]] ||
+  fail "Launcher configuration is missing: $CFG"
+
+for item in \
+  "$APP_DIR/lib" \
+  "$APP_DIR/Engine" \
+  "$APP_DIR/plugins" \
+  "$APP_DIR/Tools" \
+  "$APP_DIR/web" \
+  "$APP_DIR/ingenious-ide-3.0.0.jar"
+do
+  [[ -e "$item" ]] ||
+    fail "Required packaged resource is missing: $item"
+done
+
+packaged_engine_jars=(
+  "${(@f)$(find "$APP_DIR" -type f -name 'ingenious-engine-3.0.0.jar' -print)}"
+)
+
+if (( ${#packaged_engine_jars[@]} != 1 )); then
+  print -u2 -- "Unexpected packaged Engine JAR count: ${#packaged_engine_jars[@]}"
+
+  for item in "${packaged_engine_jars[@]}"; do
+    print -u2 -- "$item"
+  done
+
+  fail "Expected exactly one packaged ingenious-engine-3.0.0.jar"
+fi
+
+[[ "${packaged_engine_jars[1]}" == "$APP_DIR/lib/ingenious-engine-3.0.0.jar" ]] ||
+  fail "Packaged Engine JAR is not in Contents/app/lib"
+
+grep -Fq 'java-options=-Dingenious.app.home=$APPDIR' "$CFG" ||
+  fail "Finder-safe ingenious.app.home option is missing"
+
+grep -Fq 'app.mainclass=com.ing.ide.main.Main' "$CFG" ||
+  fail "GUI main class is missing from launcher configuration"
+
+grep -Fq 'app.classpath=$APPDIR/ingenious-ide-3.0.0.jar' "$CFG" ||
+  fail "GUI main JAR is missing from launcher configuration"
+
+launcher_info="$(file "$LAUNCHER")"
+jvm_info="$(file "$JVM_LIBRARY")"
+
+print -- "$launcher_info"
+print -- "$jvm_info"
+
+[[ "$launcher_info" == *"arm64"* ]] ||
+  fail "Native launcher is not arm64"
+
+[[ "$jvm_info" == *"arm64"* ]] ||
+  fail "Bundled JVM is not arm64"
+
+codesign --verify --deep --strict --verbose=2 "$GUI_APP"
+
+print -- ""
+print -- "[5/5] macOS app-image completed successfully"
+print -- ""
+print -- "Application:"
+print -- "  $GUI_APP"
+print -- ""
+print -- "Default Finder Workspace:"
+print -- "  $HOME/INGenious/Workspace"
+print -- ""
