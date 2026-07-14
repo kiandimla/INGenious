@@ -15,6 +15,26 @@ import java.util.logging.Logger;
  *
  */
 public class AppResourcePath {
+    /**
+     * Root containing application-owned files such as lib, Engine, plugins,
+     * Tools, Extensions, and web assets.
+     *
+     * In the existing ZIP distribution this defaults to the current working
+     * directory. In a jpackage application it will point to Contents/app.
+     */
+    public static final String APP_HOME_PROPERTY = "ingenious.app.home";
+
+    /**
+     * Root containing user-writable directories such as Projects, Shared,
+     * and Configuration.
+     */
+    public static final String WORKSPACE_PROPERTY = "ingenious.workspace";
+
+    /**
+     * Environment-variable equivalent of ingenious.workspace.
+     */
+    public static final String WORKSPACE_ENVIRONMENT = "INGENIOUS_WORKSPACE";
+
     private static final String RESULTS_FOLDER = "Results";
     private static final String REPORT_TEMPLATE_FOLDER = "ReportTemplate";
     private static final String CONFIG = "Configuration";
@@ -56,14 +76,73 @@ public class AppResourcePath {
     private static String date;
     private static String time;
 
+    /**
+     * Returns the root containing application-owned, read-only files.
+     *
+     * <p>For the existing ZIP distribution this falls back to user.dir,
+     * preserving the current behavior. A jpackage launcher can supply
+     * -Dingenious.app.home with the location of its Contents/app directory.
+     */
     public static String getAppRoot() {
-        try {
-            // return System.getProperty("user.dir");
-            return new File(System.getProperty("user.dir")).getCanonicalPath();
-        } catch (IOException ex) {
-            Logger.getLogger(AppResourcePath.class.getName()).log(Level.SEVERE, null, ex);
+        String configuredPath = System.getProperty(APP_HOME_PROPERTY);
+
+        if (configuredPath != null && !configuredPath.isBlank()) {
+            return canonicalPath(configuredPath);
         }
-        return null;
+
+        return canonicalPath(System.getProperty("user.dir"));
+    }
+
+    /**
+     * Returns the external, user-writable Workspace root.
+     *
+     * <p>The configured directory directly contains Projects, Shared, and
+     * Configuration.
+     */
+    public static String getWorkspaceRoot() {
+        String configuredPath = System.getProperty(WORKSPACE_PROPERTY);
+
+        if (configuredPath != null && !configuredPath.isBlank()) {
+            return canonicalPath(configuredPath);
+        }
+
+        String environmentPath = System.getenv(WORKSPACE_ENVIRONMENT);
+
+        if (environmentPath != null && !environmentPath.isBlank()) {
+            return canonicalPath(environmentPath);
+        }
+
+        /*
+         * Backward compatibility for the existing ZIP distribution, where
+         * Projects, Shared, and Configuration are under the working directory.
+         */
+        return canonicalPath(System.getProperty("user.dir"));
+    }
+
+    /**
+     * Returns the Workspace/Projects directory.
+     */
+    public static String getProjectsPath() {
+        return getWorkspaceRoot() + File.separator + "Projects";
+    }
+
+    /**
+     * Returns the Workspace/Shared directory.
+     */
+    public static String getSharedPath() {
+        return getWorkspaceRoot() + File.separator + "Shared";
+    }
+
+    private static String canonicalPath(String value) {
+        try {
+            return new File(value).getCanonicalPath();
+        } catch (IOException ex) {
+            Logger
+                .getLogger(AppResourcePath.class.getName())
+                .log(Level.WARNING, "Could not resolve path: " + value, ex);
+
+            return new File(value).getAbsolutePath();
+        }
     }
 
     public static String getExternalCommandsConfig() {
@@ -75,7 +154,7 @@ public class AppResourcePath {
     }
 
     public static String getConfigurationPath() {
-        return getAppRoot() + File.separator + CONFIG;
+        return getWorkspaceRoot() + File.separator + CONFIG;
     }
 
     public static String getLibPath() {
