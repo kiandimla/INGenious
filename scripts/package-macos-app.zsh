@@ -229,10 +229,19 @@ ditto "$GUI_APP" "$RELEASE_APP"
 print -- "OK: INGenious.app added to the existing release"
 
 print -- ""
+print -- "Cleaning temporary jpackage files"
+rm -rf -- "$REPO_ROOT/Dist/target/jpackage"
+
+[[ ! -e "$REPO_ROOT/Dist/target/jpackage" ]] ||
+  fail "Temporary jpackage directory could not be removed"
+
+print -- "OK: temporary jpackage files removed"
+
+print -- ""
 print -- "[5/5] macOS app-image completed successfully"
 print -- ""
 print -- "Application:"
-print -- "  $GUI_APP"
+print -- "  $RELEASE_APP"
 print -- ""
 print -- "Application Workspace:"
 print -- "  $RELEASE_WORKSPACE"
