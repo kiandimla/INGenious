@@ -15,6 +15,7 @@ readonly APP_DIR="$GUI_APP/Contents/app"
 readonly CFG="$APP_DIR/INGenious.cfg"
 readonly LAUNCHER="$GUI_APP/Contents/MacOS/INGenious"
 readonly JVM_LIBRARY="$GUI_APP/Contents/runtime/Contents/Home/lib/server/libjvm.dylib"
+readonly APP_ICON="$REPO_ROOT/Resources/INGenious.icns"
 
 fail() {
   print -u2 -- "ERROR: $1"
@@ -42,6 +43,9 @@ print -- ""
 
 [[ -f "$RELEASE_RUNTIME/ingenious-ide-3.0.0.jar" ]] ||
   fail "Release Runtime is missing ingenious-ide-3.0.0.jar"
+
+[[ -f "$APP_ICON" ]] ||
+  fail "Application icon is missing: $APP_ICON"
 
 /usr/libexec/java_home -v 17 >/dev/null 2>&1 ||
   fail "A Java 17 JDK could not be located"
@@ -130,6 +134,7 @@ mkdir -p -- "$OUTPUT"
   --app-version 3.0.0 \
   --vendor "ING" \
   --description "INGenious Playwright Studio" \
+  --icon "$APP_ICON" \
   --input "$INPUT" \
   --dest "$OUTPUT" \
   --main-jar ingenious-ide-3.0.0.jar \
