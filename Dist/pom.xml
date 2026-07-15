@@ -136,7 +136,7 @@
                             <includeEmptyDirs>true</includeEmptyDirs>
                             <resources>
                                 <resource>
-                                    <directory>${resourceDir}</directory>
+                                    <directory>${resourceDir}/Runtime</directory>
                                     <filtering>false</filtering>
                                     <includes>
                                         <include>Engine/**</include>
@@ -162,7 +162,7 @@
                             <includeEmptyDirs>true</includeEmptyDirs>
                             <resources>
                                 <resource>
-                                    <directory>${resourceDir}</directory>
+                                    <directory>${resourceDir}/Workspace</directory>
                                     <filtering>false</filtering>
                                     <includes>
                                         <include>Configuration/**</include>
@@ -215,11 +215,6 @@
         <!-- Build the macOS app-image with -Pmacos -->
         <profile>
             <id>macos</id>
-            <activation>
-                <os>
-                    <family>mac</family>
-                </os>
-            </activation>
             <build>
                 <plugins>
                     <plugin>
@@ -250,11 +245,6 @@
         <!-- Build the Windows app-image with -Pwindows on Windows -->
         <profile>
             <id>windows</id>
-            <activation>
-                <os>
-                    <family>windows</family>
-                </os>
-            </activation>
             <build>
                 <plugins>
                     <plugin>
