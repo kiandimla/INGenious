@@ -247,6 +247,47 @@
             </build>
         </profile>
 
+        <!-- Build the Windows app-image with -Pwindows on Windows -->
+        <profile>
+            <id>windows</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>package-windows-app</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>powershell.exe</executable>
+                                    <arguments>
+                                        <argument>-NoProfile</argument>
+                                        <argument>-ExecutionPolicy</argument>
+                                        <argument>Bypass</argument>
+                                        <argument>-File</argument>
+                                        <argument>${maven.multiModuleProjectDirectory}/scripts/package-windows-app.ps1</argument>
+                                        <argument>-JdkHome</argument>
+                                        <argument>${java.home}</argument>
+                                    </arguments>
+                                    <workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
         <!-- Optional npm install - activate with -Pnpm-install when needed -->
         <profile>
             <id>npm-install</id>
