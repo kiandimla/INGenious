@@ -225,7 +225,7 @@ if (-not $ConfigText.Contains("app.mainclass=com.ing.ide.main.Main")) {
     Fail "GUI main class is missing from INGenious.cfg"
 }
 
-if (-not $ConfigText.Contains('app.classpath=$APPDIR/ingenious-ide-3.0.0.jar')) {
+if (-not $ConfigText.Contains('app.classpath=$APPDIR\ingenious-ide-3.0.0.jar')) {
     Fail "GUI main JAR is missing from INGenious.cfg"
 }
 
