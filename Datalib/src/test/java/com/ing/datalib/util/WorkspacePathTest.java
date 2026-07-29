@@ -46,6 +46,114 @@ public class WorkspacePathTest {
     }
 
     @Test
+    public void workspaceEnvironmentPrecedesAutomaticDiscovery() throws Exception {
+        File environmentWorkspace = new File(
+            System.getProperty("java.io.tmpdir"),
+            "ingenious-environment-workspace"
+        );
+
+        String actual = WorkspacePath.resolveWorkspaceRoot(
+            null,
+            environmentWorkspace.getPath(),
+            "/Applications/INGenious.app/Contents/app",
+            "Mac OS X",
+            "/test/home",
+            "/test/current"
+        );
+
+        assertThat(actual).isEqualTo(environmentWorkspace.getCanonicalPath());
+    }
+
+    @Test
+    public void validSiblingWorkspaceIsUsedForPortableMacApplication() throws Exception {
+        File distribution = createTemporaryDirectory("ingenious-portable");
+        File appHome = new File(distribution, "INGenious.app/Contents/app");
+        File workspace = new File(distribution, "Workspace");
+
+        assertThat(appHome.mkdirs()).isTrue();
+        createValidWorkspace(workspace);
+
+        String actual = WorkspacePath.resolveWorkspaceRoot(
+            null,
+            null,
+            appHome.getPath(),
+            "Mac OS X",
+            "/test/home",
+            "/test/current"
+        );
+
+        assertThat(actual).isEqualTo(workspace.getCanonicalPath());
+    }
+
+    @Test
+    public void missingSiblingUsesMacApplicationSupport() throws Exception {
+        File distribution = createTemporaryDirectory("ingenious-installed");
+        File appHome = new File(distribution, "INGenious.app/Contents/app");
+        File userHome = createTemporaryDirectory("ingenious-user-home");
+
+        assertThat(appHome.mkdirs()).isTrue();
+
+        File expected = new File(
+            new File(new File(userHome, "Library"), "Application Support"),
+            "INGenious"
+        );
+
+        String actual = WorkspacePath.resolveWorkspaceRoot(
+            null,
+            null,
+            appHome.getPath(),
+            "Mac OS X",
+            userHome.getPath(),
+            "/test/current"
+        );
+
+        assertThat(actual).isEqualTo(expected.getCanonicalPath());
+    }
+
+    @Test
+    public void incompleteSiblingUsesMacApplicationSupport() throws Exception {
+        File distribution = createTemporaryDirectory("ingenious-incomplete");
+        File appHome = new File(distribution, "INGenious.app/Contents/app");
+        File workspace = new File(distribution, "Workspace");
+        File userHome = createTemporaryDirectory("ingenious-user-home");
+
+        assertThat(appHome.mkdirs()).isTrue();
+        assertThat(new File(workspace, "Configuration").mkdirs()).isTrue();
+
+        File expected = new File(
+            new File(new File(userHome, "Library"), "Application Support"),
+            "INGenious"
+        );
+
+        String actual = WorkspacePath.resolveWorkspaceRoot(
+            null,
+            null,
+            appHome.getPath(),
+            "Mac OS X",
+            userHome.getPath(),
+            "/test/current"
+        );
+
+        assertThat(actual).isEqualTo(expected.getCanonicalPath());
+    }
+
+    @Test
+    public void nonMacPackagedApplicationUsesLegacyFallback() throws Exception {
+        File currentDirectory = createTemporaryDirectory("ingenious-legacy");
+
+        String actual = WorkspacePath.resolveWorkspaceRoot(
+            null,
+            null,
+            "/test/packaged/application",
+            "Linux",
+            "/test/home",
+            currentDirectory.getPath()
+        );
+
+        assertThat(actual).isEqualTo(currentDirectory.getCanonicalPath());
+    }
+
+    @Test
     public void childPathsUseWorkspaceRoot() {
         assertThat(WorkspacePath.getConfigurationPath())
             .isEqualTo(WorkspacePath.getWorkspaceRoot() + File.separator + "Configuration");
@@ -55,6 +163,16 @@ public class WorkspacePathTest {
 
         assertThat(WorkspacePath.getSharedPath())
             .isEqualTo(WorkspacePath.getWorkspaceRoot() + File.separator + "Shared");
+    }
+
+    private static File createTemporaryDirectory(String prefix) throws Exception {
+        return java.nio.file.Files.createTempDirectory(prefix).toFile();
+    }
+
+    private static void createValidWorkspace(File workspace) {
+        assertThat(new File(workspace, "Configuration").mkdirs()).isTrue();
+        assertThat(new File(workspace, "Projects").mkdirs()).isTrue();
+        assertThat(new File(workspace, "Shared").mkdirs()).isTrue();
     }
 
     private static void restoreProperty(String name, String value) {

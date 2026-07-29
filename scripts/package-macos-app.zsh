@@ -140,7 +140,6 @@ mkdir -p -- "$OUTPUT"
   --main-jar ingenious-ide-3.0.0.jar \
   --main-class com.ing.ide.main.Main \
   --java-options '-Dingenious.app.home=$APPDIR' \
-  --java-options '-Dingenious.workspace=$APPDIR/../../../Workspace' \
   --java-options "-Xms128m" \
   --java-options "-Xmx1024m" \
   --java-options "-Dfile.encoding=UTF-8" \
@@ -196,8 +195,9 @@ fi
 grep -Fq 'java-options=-Dingenious.app.home=$APPDIR' "$CFG" ||
   fail "Finder-safe ingenious.app.home option is missing"
 
-grep -Fq 'java-options=-Dingenious.workspace=$APPDIR/../../../Workspace' "$CFG" ||
-  fail "Sibling ingenious.workspace option is missing"
+if grep -Fq 'java-options=-Dingenious.workspace=' "$CFG"; then
+  fail "The native macOS app must discover its Workspace at runtime"
+fi
 
 grep -Fq 'app.mainclass=com.ing.ide.main.Main' "$CFG" ||
   fail "GUI main class is missing from launcher configuration"

@@ -31,31 +31,46 @@ public final class WorkspacePath {
      * @return canonical absolute Workspace path
      */
     public static String getWorkspaceRoot() {
-        String configuredPath = System.getProperty(WORKSPACE_PROPERTY);
+        return resolveWorkspaceRoot(
+            System.getProperty(WORKSPACE_PROPERTY),
+            System.getenv(WORKSPACE_ENVIRONMENT),
+            System.getProperty(APP_HOME_PROPERTY),
+            System.getProperty("os.name"),
+            System.getProperty("user.home"),
+            System.getProperty("user.dir")
+        );
+    }
 
+    static String resolveWorkspaceRoot(
+        String configuredPath,
+        String environmentPath,
+        String appHome,
+        String osName,
+        String userHome,
+        String userDirectory
+    ) {
         if (configuredPath != null && !configuredPath.isBlank()) {
             return canonicalPath(configuredPath);
         }
-
-        String environmentPath = System.getenv(WORKSPACE_ENVIRONMENT);
 
         if (environmentPath != null && !environmentPath.isBlank()) {
             return canonicalPath(environmentPath);
         }
 
-        String appHome = System.getProperty(APP_HOME_PROPERTY);
+        if (isPackagedMacApplication(appHome, osName)) {
+            File portableWorkspace = new File(appHome, "../../../Workspace");
 
-        if (appHome != null && !appHome.isBlank()) {
-            return canonicalPath(
-                System.getProperty("user.home") +
-                File.separator +
-                "INGenious" +
-                File.separator +
-                "Workspace"
-            );
+            if (isValidWorkspace(portableWorkspace)) {
+                return canonicalPath(portableWorkspace.getPath());
+            }
+
+            File library = new File(userHome, "Library");
+            File applicationSupport = new File(library, "Application Support");
+
+            return canonicalPath(new File(applicationSupport, "INGenious").getPath());
         }
 
-        return canonicalPath(System.getProperty("user.dir"));
+        return canonicalPath(userDirectory);
     }
 
     public static String getConfigurationPath() {
@@ -68,6 +83,24 @@ public final class WorkspacePath {
 
     public static String getSharedPath() {
         return getWorkspaceRoot() + File.separator + "Shared";
+    }
+
+    private static boolean isPackagedMacApplication(String appHome, String osName) {
+        return (
+            appHome != null &&
+            !appHome.isBlank() &&
+            osName != null &&
+            osName.regionMatches(true, 0, "Mac", 0, 3)
+        );
+    }
+
+    private static boolean isValidWorkspace(File workspace) {
+        return (
+            workspace.isDirectory() &&
+            new File(workspace, "Configuration").isDirectory() &&
+            new File(workspace, "Projects").isDirectory() &&
+            new File(workspace, "Shared").isDirectory()
+        );
     }
 
     private static String canonicalPath(String value) {

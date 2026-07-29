@@ -55,30 +55,40 @@ public class AppResourcePathTest {
     }
 
     @Test
-    public void testPackagedApplicationUsesUserWorkspaceByDefault() {
+    public void testPackagedMacApplicationUsesApplicationSupportByDefault() {
         String originalWorkspace = System.getProperty(AppResourcePath.WORKSPACE_PROPERTY);
         String originalAppHome = System.getProperty(AppResourcePath.APP_HOME_PROPERTY);
         String originalUserHome = System.getProperty("user.home");
+        String originalOsName = System.getProperty("os.name");
 
         String testHome =
             System.getProperty("java.io.tmpdir") + File.separator + "ingenious-test-home";
 
         try {
             System.clearProperty(AppResourcePath.WORKSPACE_PROPERTY);
-            System.setProperty(AppResourcePath.APP_HOME_PROPERTY, "/test/packaged/application");
+            System.setProperty(
+                AppResourcePath.APP_HOME_PROPERTY,
+                "/Applications/INGenious.app/Contents/app"
+            );
             System.setProperty("user.home", testHome);
+            System.setProperty("os.name", "Mac OS X");
 
-            String expected =
-                testHome + File.separator + "INGenious" + File.separator + "Workspace";
+            File expected = new File(
+                new File(new File(testHome, "Library"), "Application Support"),
+                "INGenious"
+            );
 
-            assertThat(AppResourcePath.getWorkspaceRoot())
-                .isEqualTo(new File(expected).getCanonicalPath());
+            assertThat(AppResourcePath.getWorkspaceRoot()).isEqualTo(expected.getCanonicalPath());
+
+            assertThat(AppResourcePath.getProjectsPath())
+                .isEqualTo(expected.getCanonicalPath() + File.separator + "Projects");
         } catch (Exception ex) {
             throw new AssertionError(ex);
         } finally {
             restoreProperty(AppResourcePath.WORKSPACE_PROPERTY, originalWorkspace);
             restoreProperty(AppResourcePath.APP_HOME_PROPERTY, originalAppHome);
             restoreProperty("user.home", originalUserHome);
+            restoreProperty("os.name", originalOsName);
         }
     }
 
