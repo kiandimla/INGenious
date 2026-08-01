@@ -79,6 +79,7 @@ for item in \
   "$INPUT/plugins" \
   "$INPUT/Tools" \
   "$INPUT/web" \
+  "$INPUT/Configuration" \
   "$INPUT/ingenious-ide-3.0.0.jar"
 do
   [[ -e "$item" ]] ||
@@ -110,7 +111,6 @@ for item in \
   "$INPUT/Workspace" \
   "$INPUT/Projects" \
   "$INPUT/Shared" \
-  "$INPUT/Configuration" \
   "$INPUT/ingenious" \
   "$INPUT/ingenious.bat" \
   "$INPUT/ingenious.command" \
@@ -169,10 +169,21 @@ for item in \
   "$APP_DIR/plugins" \
   "$APP_DIR/Tools" \
   "$APP_DIR/web" \
+  "$APP_DIR/Configuration" \
   "$APP_DIR/ingenious-ide-3.0.0.jar"
 do
   [[ -e "$item" ]] ||
     fail "Required packaged resource is missing: $item"
+done
+
+for item in \
+  "$APP_DIR/Configuration/.enc" \
+  "$APP_DIR/Configuration/ExplorerConfig.properties" \
+  "$APP_DIR/Configuration/XPLOR_SETTINGS.json" \
+  "$APP_DIR/Configuration/app.settings"
+do
+  [[ ! -e "$item" ]] ||
+    fail "Writable Configuration must not be packaged inside the app: $item"
 done
 
 packaged_engine_jars=(

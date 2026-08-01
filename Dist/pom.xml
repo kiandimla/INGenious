@@ -139,6 +139,7 @@
                                     <directory>${resourceDir}/Runtime</directory>
                                     <filtering>false</filtering>
                                     <includes>
+                                        <include>Configuration/**</include>
                                         <include>Engine/**</include>
                                         <include>lib/**</include>
                                         <include>plugins/**</include>

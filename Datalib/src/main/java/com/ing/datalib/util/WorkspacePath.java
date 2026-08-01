@@ -85,6 +85,10 @@ public final class WorkspacePath {
         return getWorkspaceRoot() + File.separator + "Shared";
     }
 
+    public static String getUserDefinedPath() {
+        return getWorkspaceRoot() + File.separator + "UserDefined";
+    }
+
     private static boolean isPackagedMacApplication(String appHome, String osName) {
         return (
             appHome != null &&

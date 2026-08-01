@@ -113,6 +113,10 @@ public class AppResourcePath {
         return getWorkspaceRoot() + File.separator + "Shared";
     }
 
+    public static String getUserDefinedPath() {
+        return WorkspacePath.getUserDefinedPath();
+    }
+
     private static String canonicalPath(String value) {
         try {
             return new File(value).getCanonicalPath();
@@ -137,8 +141,24 @@ public class AppResourcePath {
         return getWorkspaceRoot() + File.separator + CONFIG;
     }
 
+    public static String getConfigurationResourcePath() {
+        return RuntimePath.getConfigurationPath();
+    }
+
     public static String getLibPath() {
         return getAppRoot() + File.separator + "lib";
+    }
+
+    public static String getEnginePath() {
+        return getAppRoot() + File.separator + "Engine";
+    }
+
+    public static String getToolsPath() {
+        return getAppRoot() + File.separator + "Tools";
+    }
+
+    public static String getWebPath() {
+        return getAppRoot() + File.separator + "web";
     }
 
     public static String getExplorerConfig() {
@@ -147,7 +167,7 @@ public class AppResourcePath {
 
     public static String getReportThemePreviewPath() {
         return (
-            getConfigurationPath() +
+            getConfigurationResourcePath() +
             File.separator +
             REPORT_TEMPLATE_FOLDER +
             File.separator +
@@ -161,7 +181,7 @@ public class AppResourcePath {
 
     public static String getReportResourcePath() {
         return (
-            getConfigurationPath() +
+            getConfigurationResourcePath() +
             File.separator +
             REPORT_TEMPLATE_FOLDER +
             File.separator +
@@ -171,7 +191,7 @@ public class AppResourcePath {
 
     public static String getMailReportTemplatePath() {
         return (
-            getConfigurationPath() +
+            getConfigurationResourcePath() +
             File.separator +
             REPORT_TEMPLATE_FOLDER +
             File.separator +
@@ -181,7 +201,7 @@ public class AppResourcePath {
 
     public static String getaXeReportTemplatePath() {
         return (
-            getConfigurationPath() +
+            getConfigurationResourcePath() +
             File.separator +
             REPORT_TEMPLATE_FOLDER +
             File.separator +
@@ -191,7 +211,7 @@ public class AppResourcePath {
 
     public static String getReportTemplatePath() {
         return (
-            getConfigurationPath() +
+            getConfigurationResourcePath() +
             File.separator +
             REPORT_TEMPLATE_FOLDER +
             File.separator +
@@ -200,7 +220,7 @@ public class AppResourcePath {
     }
 
     public static String getPageDumpResourcePath() {
-        return getConfigurationPath() + File.separator + "PageDump";
+        return getConfigurationResourcePath() + File.separator + "PageDump";
     }
 
     public static String getEncFile() {
@@ -396,7 +416,19 @@ public class AppResourcePath {
     }
 
     public static String getStepMapFile() {
-        return getConfigurationPath() + File.separator + STEPMAP_FILE;
+        return getConfigurationResourcePath() + File.separator + STEPMAP_FILE;
+    }
+
+    public static String getSampleScriptPath() {
+        return getConfigurationResourcePath() + File.separator + "SampleScript.java";
+    }
+
+    public static String getPackagePropertiesPath() {
+        return getConfigurationResourcePath() + File.separator + "package.properties";
+    }
+
+    public static String getHarToPageSpeedPath() {
+        return getConfigurationResourcePath() + File.separator + "har_to_pagespeed.exe";
     }
 
     public static String getPropertiesPath(String fileName) {
