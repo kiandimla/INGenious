@@ -125,7 +125,18 @@ public class AppResourcePathTest {
     public void testGetConfigurationPath() {
         String config = AppResourcePath.getConfigurationPath();
         assertThat(config).endsWith("Configuration");
-        assertThat(config).startsWith(AppResourcePath.getAppRoot());
+        assertThat(config).startsWith(AppResourcePath.getWorkspaceRoot());
+    }
+
+    @Test
+    public void testGetConfigurationResourcePath() {
+        String runtimeConfiguration = AppResourcePath.getConfigurationResourcePath();
+
+        assertThat(runtimeConfiguration).startsWith(AppResourcePath.getAppRoot());
+
+        assertThat(runtimeConfiguration).endsWith("Configuration");
+
+        assertThat(runtimeConfiguration).isNotEqualTo(AppResourcePath.getConfigurationPath());
     }
 
     @Test
@@ -147,6 +158,18 @@ public class AppResourcePathTest {
         String lib = AppResourcePath.getLibPath();
         assertThat(lib).endsWith("lib");
         assertThat(lib).startsWith(AppResourcePath.getAppRoot());
+    }
+
+    @Test
+    public void testFocusedRuntimeDirectoriesUseAppRoot() {
+        assertThat(AppResourcePath.getEnginePath())
+            .isEqualTo(new File(AppResourcePath.getAppRoot(), "Engine").getPath());
+
+        assertThat(AppResourcePath.getToolsPath())
+            .isEqualTo(new File(AppResourcePath.getAppRoot(), "Tools").getPath());
+
+        assertThat(AppResourcePath.getWebPath())
+            .isEqualTo(new File(AppResourcePath.getAppRoot(), "web").getPath());
     }
 
     @Test
@@ -322,16 +345,15 @@ public class AppResourcePathTest {
     @Test
     public void testPathsSeparatorConsistency() {
         // All paths should use File.separator
-        String configPath = AppResourcePath.getConfigurationPath();
+        String configResourcePath = AppResourcePath.getConfigurationResourcePath();
         String templatePath = AppResourcePath.getReportTemplatePath();
 
-        // templatePath should be a sub-path of configPath
-        assertThat(templatePath).startsWith(configPath);
+        assertThat(templatePath).startsWith(configResourcePath);
     }
 
     @Test
     public void testAllTemplatePathsStartWithConfigPath() {
-        String config = AppResourcePath.getConfigurationPath();
+        String config = AppResourcePath.getConfigurationResourcePath();
         assertThat(AppResourcePath.getReportTemplatePath()).startsWith(config);
         assertThat(AppResourcePath.getReportResourcePath()).startsWith(config);
         assertThat(AppResourcePath.getMailReportTemplatePath()).startsWith(config);

@@ -23,6 +23,27 @@ public final class RuntimePath {
         return canonicalPath(System.getProperty("user.dir"));
     }
 
+    public static String getConfigurationPath() {
+        String configuredAppHome = System.getProperty(APP_HOME_PROPERTY);
+
+        if (configuredAppHome != null && !configuredAppHome.isBlank()) {
+            return new File(getAppRoot(), "Configuration").getPath();
+        }
+
+        File legacyConfiguration = new File(getAppRoot(), "Configuration");
+
+        if (legacyConfiguration.isDirectory()) {
+            return legacyConfiguration.getPath();
+        }
+
+        File sourceConfiguration = new File(
+            getAppRoot(),
+            "Resources" + File.separator + "Runtime" + File.separator + "Configuration"
+        );
+
+        return sourceConfiguration.getPath();
+    }
+
     public static String getLibPath() {
         return new File(getAppRoot(), "lib").getPath();
     }

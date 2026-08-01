@@ -2,7 +2,7 @@ package com.ing.datalib.testdata;
 
 import com.ing.datalib.component.Project;
 import com.ing.datalib.component.TestData;
-import com.ing.datalib.util.WorkspacePath;
+import com.ing.datalib.util.RuntimePath;
 import eu.infomas.annotation.AnnotationDetector;
 import java.io.File;
 import java.io.FileInputStream;
@@ -121,7 +121,7 @@ public class TestDataFactory {
         String packages[] = null;
         try {
             Properties prop = new Properties();
-            File file = new File(WorkspacePath.getConfigurationPath(), "package.properties");
+            File file = new File(RuntimePath.getConfigurationPath(), "package.properties");
             if (file.exists()) {
                 prop.load(new FileInputStream(file));
                 if (prop.containsKey("dataprovider")) {

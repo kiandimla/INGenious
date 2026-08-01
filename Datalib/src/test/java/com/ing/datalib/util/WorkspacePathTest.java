@@ -163,6 +163,9 @@ public class WorkspacePathTest {
 
         assertThat(WorkspacePath.getSharedPath())
             .isEqualTo(WorkspacePath.getWorkspaceRoot() + File.separator + "Shared");
+
+        assertThat(WorkspacePath.getUserDefinedPath())
+            .isEqualTo(WorkspacePath.getWorkspaceRoot() + File.separator + "UserDefined");
     }
 
     private static File createTemporaryDirectory(String prefix) throws Exception {
