@@ -9,10 +9,12 @@ readonly RELEASE_APP="$REPO_ROOT/Dist/release/INGenious.app"
 readonly WORKSPACE_SOURCE="$REPO_ROOT/Resources/Workspace"
 readonly POSTINSTALL_SOURCE="$SCRIPT_DIR/macos-pkg/postinstall"
 readonly COMPONENT_PLIST="$SCRIPT_DIR/macos-pkg/components.plist"
+readonly DISTRIBUTION_FILE="$SCRIPT_DIR/macos-pkg/Distribution.xml"
 
 readonly STAGING_ROOT="$REPO_ROOT/Dist/target/macos-pkg"
 readonly PAYLOAD_ROOT="$STAGING_ROOT/root"
 readonly PACKAGE_SCRIPTS="$STAGING_ROOT/package-scripts"
+readonly COMPONENT_PACKAGE="$STAGING_ROOT/INGenious-component.pkg"
 readonly OUTPUT_PACKAGE="$REPO_ROOT/Dist/target/INGenious-3.0.0.pkg"
 
 readonly PACKAGE_IDENTIFIER="com.ing.ingenious.pkg"
@@ -36,6 +38,9 @@ print -- ""
 [[ -x /usr/bin/pkgbuild ]] ||
   fail "pkgbuild is not available."
 
+[[ -x /usr/bin/productbuild ]] ||
+  fail "productbuild is not available."
+
 [[ -d "$RELEASE_APP/Contents" ]] ||
   fail "Release application is missing or invalid: $RELEASE_APP"
 
@@ -53,14 +58,19 @@ print -- ""
 [[ -f "$COMPONENT_PLIST" ]] ||
   fail "Component property list is missing: $COMPONENT_PLIST"
 
+[[ -f "$DISTRIBUTION_FILE" ]] ||
+  fail "Distribution definition is missing: $DISTRIBUTION_FILE"
+
 /usr/bin/plutil -lint "$COMPONENT_PLIST" >/dev/null ||
   fail "Component property list is invalid."
 
+/usr/bin/xmllint --noout "$DISTRIBUTION_FILE" ||
+  fail "Distribution definition is invalid."
 
 zsh -n "$POSTINSTALL_SOURCE" ||
   fail "Post-install script failed syntax validation."
 
-print -- "[1/4] Validating the release application"
+print -- "[1/5] Validating the release application"
 
 /usr/bin/codesign \
   --verify \
@@ -72,7 +82,7 @@ print -- "[1/4] Validating the release application"
 print -- "OK: application signature is valid"
 
 print -- ""
-print -- "[2/4] Recreating package staging"
+print -- "[2/5] Recreating package staging"
 
 rm -rf -- "$STAGING_ROOT"
 rm -f -- "$OUTPUT_PACKAGE"
@@ -81,7 +91,7 @@ mkdir -p -- "$PAYLOAD_ROOT/Applications"
 mkdir -p -- "$PACKAGE_SCRIPTS"
 
 print -- ""
-print -- "[3/4] Staging application and Workspace template"
+print -- "[3/5] Staging application and Workspace template"
 
 /usr/bin/ditto \
   "$RELEASE_APP" \
@@ -110,7 +120,7 @@ chmod 755 "$PACKAGE_SCRIPTS/postinstall"
   fail "Staged Workspace is missing Shared."
 
 print -- ""
-print -- "[4/4] Building unsigned package"
+print -- "[4/5] Building component package"
 
 /usr/bin/pkgbuild \
   --root "$PAYLOAD_ROOT" \
@@ -120,10 +130,21 @@ print -- "[4/4] Building unsigned package"
   --version "$PACKAGE_VERSION" \
   --install-location / \
   --ownership recommended \
+  "$COMPONENT_PACKAGE"
+
+[[ -f "$COMPONENT_PACKAGE" ]] ||
+  fail "pkgbuild did not create the component package."
+
+print -- ""
+print -- "[5/5] Building fixed-destination product archive"
+
+/usr/bin/productbuild \
+  --distribution "$DISTRIBUTION_FILE" \
+  --package-path "$STAGING_ROOT" \
   "$OUTPUT_PACKAGE"
 
 [[ -f "$OUTPUT_PACKAGE" ]] ||
-  fail "pkgbuild did not create the expected package."
+  fail "productbuild did not create the expected product archive."
 
 /usr/sbin/pkgutil --check-signature "$OUTPUT_PACKAGE" || true
 
