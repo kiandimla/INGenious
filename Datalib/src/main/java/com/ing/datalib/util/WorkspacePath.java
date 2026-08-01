@@ -37,6 +37,7 @@ public final class WorkspacePath {
             System.getProperty(APP_HOME_PROPERTY),
             System.getProperty("os.name"),
             System.getProperty("user.home"),
+            System.getenv("LOCALAPPDATA"),
             System.getProperty("user.dir")
         );
     }
@@ -47,6 +48,7 @@ public final class WorkspacePath {
         String appHome,
         String osName,
         String userHome,
+        String localAppData,
         String userDirectory
     ) {
         if (configuredPath != null && !configuredPath.isBlank()) {
@@ -68,6 +70,17 @@ public final class WorkspacePath {
             File applicationSupport = new File(library, "Application Support");
 
             return canonicalPath(new File(applicationSupport, "INGenious").getPath());
+        }
+
+        if (isPackagedWindowsApplication(appHome, osName)) {
+            if (localAppData != null && !localAppData.isBlank()) {
+                return canonicalPath(new File(localAppData, "INGenious").getPath());
+            }
+
+            File appData = new File(userHome, "AppData");
+            File local = new File(appData, "Local");
+
+            return canonicalPath(new File(local, "INGenious").getPath());
         }
 
         return canonicalPath(userDirectory);
@@ -95,6 +108,15 @@ public final class WorkspacePath {
             !appHome.isBlank() &&
             osName != null &&
             osName.regionMatches(true, 0, "Mac", 0, 3)
+        );
+    }
+
+    private static boolean isPackagedWindowsApplication(String appHome, String osName) {
+        return (
+            appHome != null &&
+            !appHome.isBlank() &&
+            osName != null &&
+            osName.regionMatches(true, 0, "Windows", 0, 7)
         );
     }
 

@@ -58,6 +58,7 @@ public class WorkspacePathTest {
             "/Applications/INGenious.app/Contents/app",
             "Mac OS X",
             "/test/home",
+            null,
             "/test/current"
         );
 
@@ -79,6 +80,7 @@ public class WorkspacePathTest {
             appHome.getPath(),
             "Mac OS X",
             "/test/home",
+            null,
             "/test/current"
         );
 
@@ -104,6 +106,7 @@ public class WorkspacePathTest {
             appHome.getPath(),
             "Mac OS X",
             userHome.getPath(),
+            null,
             "/test/current"
         );
 
@@ -131,7 +134,46 @@ public class WorkspacePathTest {
             appHome.getPath(),
             "Mac OS X",
             userHome.getPath(),
+            null,
             "/test/current"
+        );
+
+        assertThat(actual).isEqualTo(expected.getCanonicalPath());
+    }
+
+    @Test
+    public void packagedWindowsApplicationUsesLocalAppData() throws Exception {
+        File localAppData = createTemporaryDirectory("ingenious-local-app-data");
+
+        File expected = new File(localAppData, "INGenious");
+
+        String actual = WorkspacePath.resolveWorkspaceRoot(
+            null,
+            null,
+            "C:\\Program Files\\INGenious\\app",
+            "Windows 11",
+            "C:\\Users\\test",
+            localAppData.getPath(),
+            "C:\\test\\current"
+        );
+
+        assertThat(actual).isEqualTo(expected.getCanonicalPath());
+    }
+
+    @Test
+    public void packagedWindowsApplicationFallsBackToUserProfile() throws Exception {
+        File userHome = createTemporaryDirectory("ingenious-windows-user-home");
+
+        File expected = new File(new File(new File(userHome, "AppData"), "Local"), "INGenious");
+
+        String actual = WorkspacePath.resolveWorkspaceRoot(
+            null,
+            null,
+            "C:\\Program Files\\INGenious\\app",
+            "Windows 11",
+            userHome.getPath(),
+            null,
+            "C:\\test\\current"
         );
 
         assertThat(actual).isEqualTo(expected.getCanonicalPath());
@@ -147,6 +189,7 @@ public class WorkspacePathTest {
             "/test/packaged/application",
             "Linux",
             "/test/home",
+            null,
             currentDirectory.getPath()
         );
 
