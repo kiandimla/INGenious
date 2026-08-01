@@ -4,6 +4,7 @@ import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.FlatLaf;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.ing.datalib.testdata.TestDataFactory;
+import com.ing.datalib.util.WorkspaceInitializer;
 import com.ing.engine.cli.LookUp;
 import com.ing.engine.constants.SystemDefaults;
 import com.ing.engine.support.methodInf.MethodInfoManager;
@@ -63,6 +64,8 @@ public class Main {
     }
 
     public static void main(String[] args) {
+        WorkspaceInitializer.initialize();
+
         if (args != null && args.length > 0) {
             commandLineExecution(args);
         } else {

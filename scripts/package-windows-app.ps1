@@ -25,6 +25,7 @@ $RepoRoot = Split-Path -Parent $ScriptDir
 $Release = Join-Path $RepoRoot "Dist\release"
 $ReleaseRuntime = Join-Path $Release "Runtime"
 $ReleaseWorkspace = Join-Path $Release "Workspace"
+$WorkspaceSource = Join-Path $RepoRoot "Resources\Workspace"
 $ReleaseApp = Join-Path $Release "INGenious-Windows"
 $InstallerOutput = Join-Path $RepoRoot "Dist\target"
 $Installer = Join-Path $InstallerOutput "INGenious-3.0.0.msi"
@@ -52,6 +53,10 @@ if (-not (Test-Path -LiteralPath $ReleaseRuntime -PathType Container)) {
 
 if (-not (Test-Path -LiteralPath $ReleaseWorkspace -PathType Container)) {
     Fail "Release Workspace does not exist: $ReleaseWorkspace"
+}
+
+if (-not (Test-Path -LiteralPath $WorkspaceSource -PathType Container)) {
+    Fail "Workspace template does not exist: $WorkspaceSource"
 }
 
 $GuiJar = Join-Path $ReleaseRuntime "ingenious-ide-3.0.0.jar"
@@ -85,6 +90,12 @@ New-Item -ItemType Directory -Path $InputDir -Force | Out-Null
 Get-ChildItem -LiteralPath $ReleaseRuntime -Force |
     Copy-Item -Destination $InputDir -Recurse -Force
 
+Copy-Item `
+    -LiteralPath $WorkspaceSource `
+    -Destination (Join-Path $InputDir "WorkspaceTemplate") `
+    -Recurse `
+    -Force
+
 Write-Host ""
 Write-Host "[2/6] Validating staged Runtime"
 
@@ -95,6 +106,7 @@ $RequiredInputItems = @(
     (Join-Path $InputDir "Tools"),
     (Join-Path $InputDir "web"),
     (Join-Path $InputDir "Configuration"),
+    (Join-Path $InputDir "WorkspaceTemplate"),
     (Join-Path $InputDir "ingenious-ide-3.0.0.jar")
 )
 
@@ -189,6 +201,7 @@ $RequiredPackagedItems = @(
     (Join-Path $AppDir "Tools"),
     (Join-Path $AppDir "web"),
     (Join-Path $AppDir "Configuration"),
+    (Join-Path $AppDir "WorkspaceTemplate"),
     (Join-Path $AppDir "ingenious-ide-3.0.0.jar")
 )
 
