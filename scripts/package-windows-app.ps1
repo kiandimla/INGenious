@@ -39,6 +39,7 @@ $ConfigFile = Join-Path $AppDir "INGenious.cfg"
 $Launcher = Join-Path $GeneratedApp "INGenious.exe"
 $JvmLibrary = Join-Path $GeneratedApp "runtime\bin\server\jvm.dll"
 $Jpackage = Join-Path $JdkHome "bin\jpackage.exe"
+$AppIcon = Join-Path $RepoRoot "Resources\INGenious.ico"
 
 Write-Host ""
 Write-Host "========================================"
@@ -67,6 +68,10 @@ if (-not (Test-Path -LiteralPath $GuiJar -PathType Leaf)) {
 
 if (-not (Test-Path -LiteralPath $Jpackage -PathType Leaf)) {
     Fail "jpackage.exe is missing: $Jpackage"
+}
+
+if (-not (Test-Path -LiteralPath $AppIcon -PathType Leaf)) {
+    Fail "Windows application icon is missing: $AppIcon"
 }
 
 $JpackageVersion = (& $Jpackage --version 2>&1 | Out-String).Trim()
@@ -166,6 +171,7 @@ $JpackageArguments = @(
     "--app-version", "3.0.0",
     "--vendor", "ING",
     "--description", "INGenious Playwright Studio",
+    "--icon", $AppIcon,
     "--input", $InputDir,
     "--dest", $OutputDir,
     "--main-jar", "ingenious-ide-3.0.0.jar",
