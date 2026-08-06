@@ -469,7 +469,7 @@ public class RequestPanel extends JPanel {
             com.ing.datalib.component.TestCase testCase = parent
                 .getApiTester()
                 .convertRequestToTestCase(
-                    requestForConversion,
+                    request,
                     selectedScenario,
                     testCaseName,
                     proxyConfigAlias
