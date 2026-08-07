@@ -176,6 +176,7 @@ $JpackageArguments = @(
     "--dest", $OutputDir,
     "--main-jar", "ingenious-ide-3.0.0.jar",
     "--main-class", "com.ing.ide.main.Main",
+    "--jlink-options", "--strip-debug --no-man-pages --no-header-files",
     "--java-options", '-Dingenious.app.home=$APPDIR',
     "--java-options", "-Xms128m",
     "--java-options", "-Xmx1024m",
