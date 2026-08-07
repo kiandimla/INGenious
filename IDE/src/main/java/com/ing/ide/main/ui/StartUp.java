@@ -608,18 +608,7 @@ public class StartUp extends javax.swing.JDialog {
 
     private void toggleView(java.awt.event.ItemEvent evt) {
         JToggleButton toggleButton = ((JToggleButton) evt.getSource());
-        try {
-            //create the font to use. Specify the size!
-            Font customFont = Font.createFont(
-                Font.TRUETYPE_FONT,
-                new File("resources/ui/resources/fonts/ingme_regular.ttf")
-            ); //.deriveFont(12f);
-            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-            //register the font
-            ge.registerFont(customFont);
-        } catch (IOException | FontFormatException e) {
-            // e.printStackTrace();
-        }
+        com.ing.ide.main.utils.AppFonts.register();
         if (evt.getStateChange() == ItemEvent.SELECTED) {
             toggleButton.setFont(new Font("ING Me", Font.BOLD, 12));
             String text = toggleButton.getText();

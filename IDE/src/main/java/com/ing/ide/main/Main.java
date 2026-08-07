@@ -930,18 +930,7 @@ public class Main {
      * Registers the ING Me custom font from the resources directory.
      */
     private static void registerCustomFont() {
-        try {
-            Font customFont = Font.createFont(
-                Font.TRUETYPE_FONT,
-                new File("resources/ui/resources/fonts/ingme_regular.ttf")
-            );
-            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-            ge.registerFont(customFont);
-        } catch (IOException | FontFormatException e) {
-            Logger
-                .getLogger(Main.class.getName())
-                .log(Level.FINE, "Custom font not found, using defaults", e);
-        }
+        com.ing.ide.main.utils.AppFonts.register();
     }
 
     public static void finish() {
